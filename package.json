@@ -1,0 +1,15 @@
+{
+  "name": "browser-local-search-replacer",
+  "version": "1.0.0",
+  "description": "Stateless static server + browser-only workspace-based text anonymizer/de-anonymizer. All data lives in the browser's localStorage.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/replacer.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

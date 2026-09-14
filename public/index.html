@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local Search &amp; Replacer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>Workspaces</h1>
+      <button id="btn-add-workspace" class="btn btn-primary" title="New workspace">+ New</button>
+    </div>
+    <ul id="workspace-list" class="workspace-list"></ul>
+    <div class="sidebar-footer">
+      <button id="btn-export" class="btn">Export JSON</button>
+      <button id="btn-import" class="btn">Import JSON</button>
+      <input id="file-import" type="file" accept="application/json,.json" hidden>
+      <button id="btn-reset" class="btn btn-danger">Reset all</button>
+      <p class="hint">All data is stored only in this browser (localStorage). The server keeps nothing.</p>
+    </div>
+  </aside>
+
+  <main class="main">
+    <section id="empty-state" class="empty-state">
+      <p>No workspace selected. Create one on the left to get started.</p>
+    </section>
+
+    <section id="workspace-view" class="workspace-view" hidden>
+      <header class="ws-header">
+        <input id="ws-name" class="ws-name" type="text" placeholder="Workspace name" spellcheck="false">
+        <label class="checkbox"><input id="ws-longest-first" type="checkbox"> Longest keyword first</label>
+        <label class="checkbox" title="Also store the Original/Anonymized texts of this workspace in localStorage so they survive a page reload"><input id="ws-persist-texts" type="checkbox"> Keep texts across reload</label>
+        <button id="btn-delete-workspace" class="btn btn-danger">Delete workspace</button>
+      </header>
+
+      <section class="rules">
+        <div class="section-title">
+          <h2><button id="btn-toggle-rules" class="collapse-btn" aria-expanded="true" title="Collapse / expand keywords"><span class="chevron">▾</span> Keywords <span id="rules-count" class="count"></span></button> <span id="ovr-badge" class="badge" title="Overwrite mode: typing replaces the character under the cursor. Press Insert to toggle." hidden>OVR</span></h2>
+          <button id="btn-add-rule" class="btn btn-primary">+ Add keyword</button>
+        </div>
+        <div id="rules-content">
+        <div id="rules-scroll" class="rules-scroll">
+        <table class="rules-table">
+          <thead>
+            <tr>
+              <th class="col-kw">Keyword</th>
+              <th class="col-rp">Replace with</th>
+              <th class="col-opt" title="Match regardless of letter case">Case-insensitive</th>
+              <th class="col-opt" title="Do not match inside other words">Whole word</th>
+              <th class="col-del"></th>
+            </tr>
+          </thead>
+          <tbody id="rules-body"></tbody>
+        </table>
+        </div>
+        <p id="rules-empty" class="hint">No keywords yet. Add one above.</p>
+        <p id="rules-height-hint" class="hint" hidden>Height set manually. <button id="btn-rules-height-reset" class="link-btn">Reset to automatic</button></p>
+        </div>
+      </section>
+
+      <section class="io">
+        <div class="io-toolbar">
+          <div class="segmented" role="radiogroup" aria-label="Mode">
+            <button id="mode-anon" class="seg active" role="radio" aria-checked="true">Anonymize</button>
+            <button id="mode-deanon" class="seg" role="radio" aria-checked="false">De-anonymize</button>
+          </div>
+          <div class="io-actions">
+            <button id="btn-run" class="btn btn-primary">Anonymize →</button>
+            <button id="btn-clear" class="btn">Clear</button>
+            <label class="checkbox" title="Update the result automatically after every change to the text or the keywords"><input id="live-update" type="checkbox"> Live update</label>
+            <span id="io-count" class="count"></span>
+          </div>
+          <div class="io-actions io-actions-right">
+            <button id="btn-copy" class="btn">Copy result</button>
+          </div>
+        </div>
+        <div class="io-columns">
+          <div class="io-col">
+            <h2 id="label-in">Original</h2>
+            <div class="io-field">
+              <div class="io-backdrop" aria-hidden="true"><div id="io-in-hl" class="io-highlights"></div></div>
+              <textarea id="io-in" placeholder="Paste text here…" spellcheck="false"></textarea>
+            </div>
+          </div>
+          <div class="io-col">
+            <h2 id="label-out">Anonymized</h2>
+            <div class="io-field io-field-readonly">
+              <div class="io-backdrop" aria-hidden="true"><div id="io-out-hl" class="io-highlights"></div></div>
+              <textarea id="io-out" placeholder="Result appears here…" readonly spellcheck="false"></textarea>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="replacer.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
