@@ -38,11 +38,26 @@
       <section class="rules">
         <div class="section-title">
           <h2><button id="btn-toggle-rules" class="collapse-btn" aria-expanded="true" title="Collapse / expand keywords"><span class="chevron">▾</span> Keywords <span id="rules-count" class="count"></span></button> <span id="ovr-badge" class="badge" title="Overwrite mode: typing replaces the character under the cursor. Press Insert to toggle." hidden>OVR</span></h2>
-          <button id="btn-add-rule" class="btn btn-primary">+ Add keyword</button>
+          <div class="section-actions">
+            <div class="segmented segmented-sm" role="radiogroup" aria-label="Keyword view">
+              <button id="view-table" class="seg" role="radio" aria-checked="true" title="One row per keyword with all options">Table</button>
+              <button id="view-compact" class="seg" role="radio" aria-checked="false" title="One entry row, existing keywords as pills">Compact</button>
+            </div>
+            <button id="btn-add-rule" class="btn btn-primary">+ Add keyword</button>
+          </div>
         </div>
         <div id="rules-content">
+        <div id="compact-entry" class="compact-entry" hidden>
+          <input id="ce-kw" type="text" placeholder="Keyword" spellcheck="false">
+          <span class="arrow">→</span>
+          <input id="ce-rp" type="text" placeholder="Replace with" spellcheck="false">
+          <label class="checkbox opt-check" title="Case-insensitive"><input id="ce-ci" type="checkbox"> Aa</label>
+          <label class="checkbox opt-check" title="Whole word only"><input id="ce-ww" type="checkbox"> W</label>
+          <button id="ce-add" class="btn btn-primary">Add</button>
+          <button id="ce-cancel" class="btn" hidden>Cancel</button>
+        </div>
         <div id="rules-scroll" class="rules-scroll">
-        <table class="rules-table">
+        <table id="rules-table" class="rules-table">
           <thead>
             <tr>
               <th class="col-kw">Keyword</th>
@@ -54,6 +69,7 @@
           </thead>
           <tbody id="rules-body"></tbody>
         </table>
+        <div id="rules-pills" class="pills" hidden></div>
         </div>
         <p id="rules-empty" class="hint">No keywords yet. Add one above.</p>
         <p id="rules-height-hint" class="hint" hidden>Height set manually. <button id="btn-rules-height-reset" class="link-btn">Reset to automatic</button></p>

@@ -150,6 +150,70 @@ body {
   margin-bottom: 8px;
 }
 .section-title h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.section-actions { display: flex; align-items: center; gap: 10px; }
+.segmented-sm .seg { padding: 4px 10px; font-size: 13px; }
+
+/* ---------- Compact keyword view ---------- */
+.compact-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.compact-entry input[type="text"] {
+  flex: 1 1 180px;
+  min-width: 120px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+}
+.compact-entry input[type="text"]:focus { border-color: var(--primary); outline: none; }
+.compact-entry .arrow { color: var(--muted); }
+.opt-check { font-family: var(--mono); font-size: 12px; color: var(--muted); padding: 0 4px; }
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #f0f2f5;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1;
+  overflow: hidden;
+}
+.pill.editing { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2); }
+.pill.invalid { border-color: var(--danger); }
+.pill > button {
+  font: inherit;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 6px 6px;
+  line-height: 1;
+}
+.pill-main { padding-left: 10px !important; display: inline-flex; gap: 6px; align-items: center; }
+.pill-main:hover { background: #e4e8ee; }
+.pill-kw { background: var(--hl-in); border-radius: 3px; padding: 1px 4px; }
+.pill-rp { background: var(--hl-out); border-radius: 3px; padding: 1px 4px; }
+.pill-arrow { color: var(--muted); }
+.pill-empty { color: var(--muted); font-style: italic; }
+.pill-opt { color: var(--muted) !important; opacity: 0.4; font-weight: 600; padding: 6px 4px !important; }
+.pill-opt.on { opacity: 1; color: var(--primary) !important; }
+.pill-opt:hover { opacity: 1; }
+.pill-del { color: var(--muted) !important; padding-right: 10px !important; font-size: 14px; }
+.pill-del:hover { color: var(--danger) !important; }
 
 /* ---------- Rules table ---------- */
 .rules { margin-bottom: 24px; }

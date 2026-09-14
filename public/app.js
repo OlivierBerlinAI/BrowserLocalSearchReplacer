@@ -9,7 +9,7 @@ function uid() {
 }
 
 function defaultState() {
-  return { version: 1, activeWorkspaceId: null, workspaces: [], mode: 'anonymize', rulesCollapsed: false, liveUpdate: true, rulesHeight: null };
+  return { version: 1, activeWorkspaceId: null, workspaces: [], mode: 'anonymize', rulesCollapsed: false, liveUpdate: true, rulesHeight: null, rulesView: 'table' };
 }
 
 function normalizeRule(r) {
@@ -60,6 +60,7 @@ function normalizeState(raw) {
   s.rulesCollapsed = raw?.rulesCollapsed === true;
   s.liveUpdate = raw?.liveUpdate !== false;
   s.rulesHeight = Number.isFinite(raw?.rulesHeight) && raw.rulesHeight > 0 ? raw.rulesHeight : null;
+  s.rulesView = raw?.rulesView === 'compact' ? 'compact' : 'table';
   if (typeof raw?.activeWorkspaceId === 'string' && s.workspaces.some((w) => w.id === raw.activeWorkspaceId)) {
     s.activeWorkspaceId = raw.activeWorkspaceId;
   } else if (s.workspaces.length) {
@@ -242,9 +243,10 @@ function renderWorkspace() {
   $('#ws-name').value = ws.name;
   $('#ws-longest-first').checked = ws.longestFirst;
   $('#ws-persist-texts').checked = ws.persistTexts;
+  cancelEdit();
   renderRules();
   renderRulesCollapsed();
-  applyRulesHeight();
+  renderRulesView();
   restoreIo();
   updateHighlights();
   liveRun();
@@ -272,10 +274,18 @@ function applyRulesHeight() {
     return;
   }
   box.style.height = '';
+  const border = box.offsetHeight - box.clientHeight;
+  if (isCompact()) {
+    // Pills wrap into lines; limit to roughly MAX_VISIBLE_RULES lines of pills.
+    const pill = box.querySelector('.pill');
+    if (!pill || pill.offsetHeight === 0) { box.style.maxHeight = ''; return; }
+    const gap = 6, pad = 16;
+    box.style.maxHeight = (pad + MAX_VISIBLE_RULES * (pill.offsetHeight + gap) - gap + border) + 'px';
+    return;
+  }
   const row = box.querySelector('tbody tr');
   const head = box.querySelector('thead');
   if (!row || row.offsetHeight === 0) { box.style.maxHeight = ''; return; }
-  const border = box.offsetHeight - box.clientHeight;
   box.style.maxHeight = (head.offsetHeight + MAX_VISIBLE_RULES * row.offsetHeight + border) + 'px';
 }
 
@@ -335,19 +345,165 @@ function renderRules() {
     rp.addEventListener('input', () => { rule.replacement = rp.value; saveState(); liveRun(); });
     ci.addEventListener('change', () => { rule.caseInsensitive = ci.checked; saveState(); liveRun(); });
     ww.addEventListener('change', () => { rule.wholeWord = ww.checked; saveState(); liveRun(); });
-    tr.querySelector('.del').addEventListener('click', () => {
-      ws.rules = ws.rules.filter((r) => r.id !== rule.id);
-      saveState();
-      renderRules();
-      renderSidebar();
-      liveRun();
-    });
+    tr.querySelector('.del').addEventListener('click', () => deleteRule(rule.id));
     // Enter in the replacement field adds a new row for quick data entry.
     rp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); addRule(); }
     });
     tbody.appendChild(tr);
   }
+  renderPills();
+}
+
+// ---------- Compact view: entry row + pills ----------
+let editingRuleId = null;
+
+function isCompact() { return state.rulesView === 'compact'; }
+
+function renderRulesView() {
+  const compact = isCompact();
+  $('#view-table').classList.toggle('active', !compact);
+  $('#view-table').setAttribute('aria-checked', String(!compact));
+  $('#view-compact').classList.toggle('active', compact);
+  $('#view-compact').setAttribute('aria-checked', String(compact));
+  $('#btn-add-rule').hidden = compact;
+  $('#compact-entry').hidden = !compact;
+  $('#rules-table').hidden = compact;
+  $('#rules-pills').hidden = !compact;
+  if (!compact) cancelEdit();
+  applyRulesHeight();
+}
+
+function setRulesView(view) {
+  state.rulesView = view;
+  saveState();
+  renderRules(); // table edits do not re-render live, so sync both views now
+  renderRulesView();
+}
+
+function renderPills() {
+  const ws = activeWorkspace();
+  const box = $('#rules-pills');
+  box.innerHTML = '';
+  if (!ws) return;
+  if (editingRuleId && !ws.rules.some((r) => r.id === editingRuleId)) cancelEdit();
+  for (const rule of ws.rules) {
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.dataset.id = rule.id;
+    pill.classList.toggle('invalid', rule.keyword.trim() === '');
+    pill.classList.toggle('editing', rule.id === editingRuleId);
+
+    const main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'pill-main';
+    main.title = 'Click to edit';
+    const kw = document.createElement('span');
+    kw.className = rule.keyword ? 'pill-kw' : 'pill-empty';
+    kw.textContent = rule.keyword || '(empty)';
+    const arrow = document.createElement('span');
+    arrow.className = 'pill-arrow';
+    arrow.textContent = '→';
+    const rp = document.createElement('span');
+    rp.className = rule.replacement ? 'pill-rp' : 'pill-empty';
+    rp.textContent = rule.replacement || '(empty)';
+    main.append(kw, arrow, rp);
+    main.addEventListener('click', () => startEdit(rule.id));
+
+    const ci = document.createElement('button');
+    ci.type = 'button';
+    ci.className = 'pill-opt ci' + (rule.caseInsensitive ? ' on' : '');
+    ci.textContent = 'Aa';
+    ci.title = 'Case-insensitive: ' + (rule.caseInsensitive ? 'on' : 'off') + ' (click to toggle)';
+    ci.addEventListener('click', () => { rule.caseInsensitive = !rule.caseInsensitive; saveState(); renderRules(); liveRun(); });
+
+    const ww = document.createElement('button');
+    ww.type = 'button';
+    ww.className = 'pill-opt ww' + (rule.wholeWord ? ' on' : '');
+    ww.textContent = 'W';
+    ww.title = 'Whole word: ' + (rule.wholeWord ? 'on' : 'off') + ' (click to toggle)';
+    ww.addEventListener('click', () => { rule.wholeWord = !rule.wholeWord; saveState(); renderRules(); liveRun(); });
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'pill-del';
+    del.textContent = '×';
+    del.title = 'Remove keyword';
+    del.addEventListener('click', () => deleteRule(rule.id));
+
+    pill.append(main, ci, ww, del);
+    box.appendChild(pill);
+  }
+}
+
+function deleteRule(id) {
+  const ws = activeWorkspace();
+  if (!ws) return;
+  ws.rules = ws.rules.filter((r) => r.id !== id);
+  if (editingRuleId === id) cancelEdit();
+  saveState();
+  renderRules();
+  renderSidebar();
+  applyRulesHeight();
+  liveRun();
+}
+
+function startEdit(id) {
+  const ws = activeWorkspace();
+  const rule = ws?.rules.find((r) => r.id === id);
+  if (!rule) return;
+  editingRuleId = id;
+  $('#ce-kw').value = rule.keyword;
+  $('#ce-rp').value = rule.replacement;
+  $('#ce-ci').checked = rule.caseInsensitive;
+  $('#ce-ww').checked = rule.wholeWord;
+  $('#ce-add').textContent = 'Save';
+  $('#ce-cancel').hidden = false;
+  renderPills();
+  $('#ce-kw').focus();
+  $('#ce-kw').select();
+}
+
+function cancelEdit() {
+  if (editingRuleId === null && $('#ce-add').textContent === 'Add') return;
+  editingRuleId = null;
+  $('#ce-kw').value = '';
+  $('#ce-rp').value = '';
+  $('#ce-add').textContent = 'Add';
+  $('#ce-cancel').hidden = true;
+  renderPills();
+}
+
+// Add a new rule from the entry row, or save the rule being edited.
+// The option checkboxes keep their state so several similar entries go fast.
+function submitEntry() {
+  const ws = activeWorkspace();
+  if (!ws) return;
+  const keyword = $('#ce-kw').value;
+  if (keyword.trim() === '') { toast('Keyword must not be empty.'); $('#ce-kw').focus(); return; }
+  const values = {
+    keyword,
+    replacement: $('#ce-rp').value,
+    caseInsensitive: $('#ce-ci').checked,
+    wholeWord: $('#ce-ww').checked,
+  };
+  if (editingRuleId) {
+    const rule = ws.rules.find((r) => r.id === editingRuleId);
+    if (rule) Object.assign(rule, values);
+    editingRuleId = null;
+    $('#ce-add').textContent = 'Add';
+    $('#ce-cancel').hidden = true;
+  } else {
+    ws.rules.push(normalizeRule(values));
+  }
+  $('#ce-kw').value = '';
+  $('#ce-rp').value = '';
+  saveState();
+  renderRules();
+  renderSidebar();
+  applyRulesHeight();
+  liveRun();
+  $('#ce-kw').focus();
 }
 
 function renderAll() {
@@ -640,6 +796,17 @@ $('#btn-delete-workspace').addEventListener('click', deleteWorkspace);
 $('#btn-add-rule').addEventListener('click', addRule);
 $('#btn-toggle-rules').addEventListener('click', () => setRulesCollapsed(!state.rulesCollapsed));
 $('#btn-rules-height-reset').addEventListener('click', () => setRulesHeight(null));
+$('#view-table').addEventListener('click', () => setRulesView('table'));
+$('#view-compact').addEventListener('click', () => setRulesView('compact'));
+$('#ce-add').addEventListener('click', submitEntry);
+$('#ce-cancel').addEventListener('click', cancelEdit);
+for (const id of ['#ce-kw', '#ce-rp']) {
+  $(id).addEventListener('keydown', overwriteKeydown);
+  $(id).addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submitEntry(); }
+    if (e.key === 'Escape' && editingRuleId) { e.preventDefault(); cancelEdit(); }
+  });
+}
 
 $('#ws-name').addEventListener('input', (e) => {
   const ws = activeWorkspace();

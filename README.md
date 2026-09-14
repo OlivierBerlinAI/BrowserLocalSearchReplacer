@@ -42,6 +42,12 @@ npm test
    - *Whole word* – `Ann` does not match inside `Annual`.
    The workspace-level option *Longest keyword first* makes `John Smith` win
    over `John` when both are keywords.
+   *Table* / *Compact* switches the view. Compact shows one entry row
+   (keyword, replacement, `Aa` = case-insensitive, `W` = whole word; Enter
+   adds) and the existing keywords as pills `keyword → replacement Aa W ×`.
+   Click the `Aa`/`W` icons on a pill to toggle the option, `×` to remove
+   it, and the pill text to load it into the entry row for editing (Enter
+   saves, Escape cancels). Both views edit the same data.
    The table shows at most 10 rows and scrolls beyond that (header stays
    visible). Drag the handle at its bottom-right corner to set the height by
    hand; it is remembered until you click *Reset to automatic*.
