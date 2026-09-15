@@ -9,7 +9,7 @@ function uid() {
 }
 
 function defaultState() {
-  return { version: 1, activeWorkspaceId: null, workspaces: [], mode: 'anonymize', rulesCollapsed: false, liveUpdate: true, rulesHeight: null, rulesView: 'table' };
+  return { version: 1, activeWorkspaceId: null, workspaces: [], mode: 'anonymize', rulesCollapsed: false, mappingsCollapsed: false, liveUpdate: true, rulesHeight: null, rulesView: 'table' };
 }
 
 function normalizeRule(r) {
@@ -19,7 +19,14 @@ function normalizeRule(r) {
     replacement: typeof r?.replacement === 'string' ? r.replacement : '',
     caseInsensitive: !!r?.caseInsensitive,
     wholeWord: !!r?.wholeWord,
+    pattern: !!r?.pattern,               // keyword/replacement are wildcard templates
+    seedIncludesText: !!r?.seedIncludesText, // fixed text of the pattern feeds the random seed
   };
+}
+
+function normalizeMapping(m) {
+  if (typeof m?.from !== 'string' || typeof m?.to !== 'string' || m.to.length === 0) return null;
+  return { from: m.from, to: m.to };
 }
 
 function emptyBuf() {
@@ -45,7 +52,18 @@ function normalizeWorkspace(w) {
     longestFirst: w?.longestFirst !== false,
     persistTexts: w?.persistTexts === true,
     rules: Array.isArray(w?.rules) ? w.rules.map(normalizeRule) : [],
+    // Seed for wildcard values and the mappings recorded from them. Both travel
+    // with the workspace (localStorage and JSON export), so de-anonymizing works
+    // wherever the workspace is.
+    seed: typeof w?.seed === 'string' && w.seed.trim() ? w.seed.trim() : Replacer.randomSeed(),
+    mappings: Array.isArray(w?.mappings) ? w.mappings.map(normalizeMapping).filter(Boolean) : [],
   };
+  // Demo workspaces ship with the app; "deleting" one only hides it.
+  if (w?.demo === true) {
+    ws.demo = true;
+    ws.hidden = w.hidden === true;
+    if (Array.isArray(w.help)) ws.help = w.help.filter((h) => typeof h === 'string');
+  }
   // Texts are only kept in storage when the workspace opts in.
   if (ws.persistTexts && w?.texts) ws.texts = normalizeTexts(w.texts);
   return ws;
@@ -56,15 +74,21 @@ function normalizeState(raw) {
   if (raw && Array.isArray(raw.workspaces)) {
     s.workspaces = raw.workspaces.map(normalizeWorkspace);
   }
+  // Add demo workspaces that this browser has never seen (hidden ones stay hidden).
+  for (const demo of Demos.demoWorkspaces()) {
+    if (!s.workspaces.some((w) => w.id === demo.id)) s.workspaces.push(normalizeWorkspace(demo));
+  }
   if (raw?.mode === 'deanonymize') s.mode = 'deanonymize';
   s.rulesCollapsed = raw?.rulesCollapsed === true;
+  s.mappingsCollapsed = raw?.mappingsCollapsed === true;
   s.liveUpdate = raw?.liveUpdate !== false;
   s.rulesHeight = Number.isFinite(raw?.rulesHeight) && raw.rulesHeight > 0 ? raw.rulesHeight : null;
   s.rulesView = raw?.rulesView === 'compact' ? 'compact' : 'table';
-  if (typeof raw?.activeWorkspaceId === 'string' && s.workspaces.some((w) => w.id === raw.activeWorkspaceId)) {
+  const visible = s.workspaces.filter((w) => !w.hidden);
+  if (typeof raw?.activeWorkspaceId === 'string' && visible.some((w) => w.id === raw.activeWorkspaceId)) {
     s.activeWorkspaceId = raw.activeWorkspaceId;
-  } else if (s.workspaces.length) {
-    s.activeWorkspaceId = s.workspaces[0].id;
+  } else if (visible.length) {
+    s.activeWorkspaceId = visible[0].id;
   }
   return s;
 }
@@ -95,8 +119,28 @@ let state = loadState();
 // ---------- Helpers ----------
 const $ = (sel) => document.querySelector(sel);
 
+// Inline SVG icon from the sprite embedded in index.html (Material Design Icons).
+function svgIcon(name) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'icon');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(NS, 'use');
+  use.setAttribute('href', '#mdi-' + name);
+  svg.appendChild(use);
+  return svg;
+}
+
 function activeWorkspace() {
   return state.workspaces.find((w) => w.id === state.activeWorkspaceId) || null;
+}
+
+function visibleWorkspaces() {
+  return state.workspaces.filter((w) => !w.hidden);
+}
+
+function hiddenDemos() {
+  return state.workspaces.filter((w) => w.demo && w.hidden);
 }
 
 let toastTimer = null;
@@ -201,7 +245,7 @@ function sizeBackdrop(ta) {
 function updateHighlights() {
   const ws = activeWorkspace();
   const anon = isAnon();
-  const opts = { longestFirst: ws ? ws.longestFirst : false };
+  const opts = ws ? engineOpts(ws) : {};
   // Input holds keywords in anonymize mode and replacements in de-anonymize mode; output the reverse.
   const inRe = ws ? Replacer.compile(ws.rules, Object.assign({}, opts, { reverse: !anon })).regex : null;
   const outRe = ws ? Replacer.compile(ws.rules, Object.assign({}, opts, { reverse: anon })).regex : null;
@@ -220,18 +264,31 @@ function updateHighlights() {
 function renderSidebar() {
   const ul = $('#workspace-list');
   ul.innerHTML = '';
-  for (const ws of state.workspaces) {
+  for (const ws of visibleWorkspaces()) {
     const li = document.createElement('li');
     li.dataset.id = ws.id;
-    li.textContent = ws.name || 'Untitled';
+    const name = document.createElement('span');
+    name.className = 'ws-list-name';
+    name.textContent = ws.name || 'Untitled';
+    li.appendChild(name);
     if (ws.id === state.activeWorkspaceId) li.classList.add('active');
     const count = document.createElement('span');
     count.className = 'count';
     count.textContent = `(${ws.rules.length})`;
     li.appendChild(count);
+    if (ws.demo) {
+      const badge = document.createElement('span');
+      badge.className = 'demo-badge';
+      badge.textContent = 'demo';
+      badge.title = 'Demo workspace shipped with the app. Deleting it only hides it.';
+      li.appendChild(badge);
+    }
     li.addEventListener('click', () => selectWorkspace(ws.id));
     ul.appendChild(li);
   }
+  const hidden = hiddenDemos().length;
+  $('#btn-restore-demos').hidden = hidden === 0;
+  $('#btn-restore-demos').textContent = `Restore demo workspace${hidden === 1 ? '' : 's'} (${hidden})`;
 }
 
 function renderWorkspace() {
@@ -243,13 +300,31 @@ function renderWorkspace() {
   $('#ws-name').value = ws.name;
   $('#ws-longest-first').checked = ws.longestFirst;
   $('#ws-persist-texts').checked = ws.persistTexts;
+  $('#btn-delete-workspace').textContent = ws.demo ? 'Hide demo' : 'Delete workspace';
+  $('#btn-delete-workspace').title = ws.demo ? 'Hide this demo workspace (it can be restored from the sidebar)' : '';
+  renderDemoNote(ws);
   cancelEdit();
   renderRules();
   renderRulesCollapsed();
   renderRulesView();
+  renderMappings();
+  renderMappingsCollapsed();
   restoreIo();
   updateHighlights();
   liveRun();
+}
+
+function renderDemoNote(ws) {
+  const box = $('#demo-note');
+  const lines = ws.demo && ws.help ? ws.help : [];
+  box.hidden = lines.length === 0;
+  const ul = box.querySelector('ul');
+  ul.innerHTML = '';
+  for (const line of lines) {
+    const li = document.createElement('li');
+    li.textContent = line;
+    ul.appendChild(li);
+  }
 }
 
 function renderRulesCollapsed() {
@@ -327,24 +402,51 @@ function renderRules() {
       <td class="col-rp"><input type="text" class="rp" placeholder="Replacement" spellcheck="false"></td>
       <td class="col-opt"><input type="checkbox" class="ci" title="Case-insensitive"></td>
       <td class="col-opt"><input type="checkbox" class="ww" title="Whole word only"></td>
-      <td class="col-del"><button class="btn btn-icon del" title="Remove keyword">✕</button></td>
+      <td class="col-opt"><input type="checkbox" class="pt" title="Wildcards (%d %i %s %a %x)"></td>
+      <td class="col-opt"><input type="checkbox" class="sc" title="Text in seed"></td>
+      <td class="col-hits"><span class="hits"></span></td>
+      <td class="col-del"><button class="btn btn-icon del" title="Remove keyword"></button></td>
     `;
+    tr.querySelector('.del').appendChild(svgIcon('close'));
     const kw = tr.querySelector('.kw');
     const rp = tr.querySelector('.rp');
     const ci = tr.querySelector('.ci');
     const ww = tr.querySelector('.ww');
+    const pt = tr.querySelector('.pt');
+    const sc = tr.querySelector('.sc');
     kw.value = rule.keyword;
     rp.value = rule.replacement;
     ci.checked = rule.caseInsensitive;
     ww.checked = rule.wholeWord;
+    pt.checked = rule.pattern;
+    sc.checked = rule.seedIncludesText;
+    sc.disabled = !rule.pattern;
     tr.classList.toggle('invalid', rule.keyword.trim() === '');
+    tr.classList.toggle('is-pattern', rule.pattern);
+    tr.querySelector('.hits').textContent = hitsText(rule.id);
+    applyRuleStatus(rule, tr, kw, rp);
 
     kw.addEventListener('keydown', overwriteKeydown);
     rp.addEventListener('keydown', overwriteKeydown);
-    kw.addEventListener('input', () => { rule.keyword = kw.value; tr.classList.toggle('invalid', kw.value.trim() === ''); saveState(); liveRun(); });
-    rp.addEventListener('input', () => { rule.replacement = rp.value; saveState(); liveRun(); });
+    kw.addEventListener('input', () => {
+      setKeyword(rule, kw.value);
+      if (rp.value !== rule.replacement) rp.value = rule.replacement;
+      tr.classList.toggle('invalid', kw.value.trim() === '');
+      applyRuleStatus(rule, tr, kw, rp);
+      saveState(); liveRun();
+    });
+    rp.addEventListener('input', () => { rule.replacement = rp.value; applyRuleStatus(rule, tr, kw, rp); saveState(); liveRun(); });
     ci.addEventListener('change', () => { rule.caseInsensitive = ci.checked; saveState(); liveRun(); });
     ww.addEventListener('change', () => { rule.wholeWord = ww.checked; saveState(); liveRun(); });
+    pt.addEventListener('change', () => {
+      setPattern(rule, pt.checked);
+      rp.value = rule.replacement;
+      sc.disabled = !rule.pattern;
+      tr.classList.toggle('is-pattern', rule.pattern);
+      applyRuleStatus(rule, tr, kw, rp);
+      saveState(); renderWildcardHint(); liveRun();
+    });
+    sc.addEventListener('change', () => { rule.seedIncludesText = sc.checked; saveState(); liveRun(); });
     tr.querySelector('.del').addEventListener('click', () => deleteRule(rule.id));
     // Enter in the replacement field adds a new row for quick data entry.
     rp.addEventListener('keydown', (e) => {
@@ -353,6 +455,61 @@ function renderRules() {
     tbody.appendChild(tr);
   }
   renderPills();
+  renderWildcardHint();
+}
+
+// ---------- Rule helpers shared by both views ----------
+// While a wildcard rule's replacement simply mirrors its keyword (the common
+// case: same fixed text, random values), keep it mirrored as the keyword is typed.
+function setKeyword(rule, value) {
+  if (rule.pattern && rule.replacement === rule.keyword) rule.replacement = value;
+  rule.keyword = value;
+}
+
+function setPattern(rule, on) {
+  rule.pattern = on;
+  if (on && rule.replacement === '') rule.replacement = rule.keyword;
+  if (!on) rule.seedIncludesText = false;
+}
+
+// Wildcard rules can be written "template -> template" or "example -> template"
+// (keyword holds a concrete value, only the replacement has wildcards). Show how
+// the rule is read, and warn when the two sides do not fit together.
+function applyRuleStatus(rule, container, kwEl, rpEl) {
+  const d = Replacer.describeRule(rule);
+  container.classList.toggle('warn', !!d.warning);
+  container.classList.toggle('derived', d.derived);
+  const note = d.warning ? d.warning : d.derived ? 'Keyword is read as an example. Matches as: ' + d.matches : '';
+  kwEl.title = note;
+  rpEl.title = note;
+}
+
+function hasPatternRules(ws) {
+  return ws.rules.some((r) => r.pattern);
+}
+
+function renderWildcardHint() {
+  renderMappingsVisibility(); // the mappings section appears with the first wildcard rule
+}
+
+// Per-rule match counts of the last run, shown next to each rule.
+let lastHits = new Map(); // rule id -> count
+
+function hitsText(id) {
+  const n = lastHits.get(id);
+  return n === undefined ? '' : String(n); // "0" makes a non-matching rule visible
+}
+
+function renderHits() {
+  for (const tr of $('#rules-body').querySelectorAll('tr')) {
+    tr.querySelector('.hits').textContent = hitsText(tr.dataset.id);
+  }
+  for (const pill of $('#rules-pills').querySelectorAll('.pill')) {
+    const el = pill.querySelector('.pill-hits');
+    const text = hitsText(pill.dataset.id);
+    el.textContent = text;
+    el.hidden = !text;
+  }
 }
 
 // ---------- Compact view: entry row + pills ----------
@@ -398,6 +555,9 @@ function renderPills() {
     main.type = 'button';
     main.className = 'pill-main';
     main.title = 'Click to edit';
+    const status = Replacer.describeRule(rule);
+    if (status.warning) { pill.classList.add('warn'); main.title = status.warning + ' Click to edit.'; }
+    else if (status.derived) { pill.classList.add('derived'); main.title = 'Matches as: ' + status.matches + '. Click to edit.'; }
     const kw = document.createElement('span');
     kw.className = rule.keyword ? 'pill-kw' : 'pill-empty';
     kw.textContent = rule.keyword || '(empty)';
@@ -407,31 +567,59 @@ function renderPills() {
     const rp = document.createElement('span');
     rp.className = rule.replacement ? 'pill-rp' : 'pill-empty';
     rp.textContent = rule.replacement || '(empty)';
-    main.append(kw, arrow, rp);
+    const hits = document.createElement('span');
+    hits.className = 'pill-hits';
+    hits.title = 'Matches in the current text';
+    hits.textContent = hitsText(rule.id);
+    hits.hidden = !hits.textContent;
+    main.append(kw, arrow, rp, hits);
     main.addEventListener('click', () => startEdit(rule.id));
 
     const ci = document.createElement('button');
     ci.type = 'button';
     ci.className = 'pill-opt ci' + (rule.caseInsensitive ? ' on' : '');
-    ci.textContent = 'Aa';
+    ci.appendChild(svgIcon('format-letter-case'));
     ci.title = 'Case-insensitive: ' + (rule.caseInsensitive ? 'on' : 'off') + ' (click to toggle)';
     ci.addEventListener('click', () => { rule.caseInsensitive = !rule.caseInsensitive; saveState(); renderRules(); liveRun(); });
 
     const ww = document.createElement('button');
     ww.type = 'button';
     ww.className = 'pill-opt ww' + (rule.wholeWord ? ' on' : '');
-    ww.textContent = 'W';
+    ww.appendChild(svgIcon('format-letter-matches'));
     ww.title = 'Whole word: ' + (rule.wholeWord ? 'on' : 'off') + ' (click to toggle)';
     ww.addEventListener('click', () => { rule.wholeWord = !rule.wholeWord; saveState(); renderRules(); liveRun(); });
+
+    const pt = document.createElement('button');
+    pt.type = 'button';
+    pt.className = 'pill-opt pt' + (rule.pattern ? ' on' : '');
+    pt.appendChild(svgIcon('regex'));
+    pt.title = 'Wildcards: ' + (rule.pattern ? 'on' : 'off') + ' (click to toggle)';
+    pt.addEventListener('click', () => { setPattern(rule, !rule.pattern); saveState(); renderRules(); liveRun(); });
+
+    const sc = document.createElement('button');
+    sc.type = 'button';
+    sc.className = 'pill-opt sc' + (rule.seedIncludesText ? ' on' : '');
+    sc.appendChild(svgIcon('seed'));
+    sc.disabled = !rule.pattern;
+    sc.title = rule.pattern
+      ? 'Text in seed: ' + (rule.seedIncludesText ? 'on' : 'off') + ' (click to toggle)'
+      : 'Text in seed (only for wildcard rules)';
+    sc.addEventListener('click', () => { rule.seedIncludesText = !rule.seedIncludesText; saveState(); renderRules(); liveRun(); });
 
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'pill-del';
-    del.textContent = '×';
+    del.appendChild(svgIcon('close'));
     del.title = 'Remove keyword';
     del.addEventListener('click', () => deleteRule(rule.id));
 
-    pill.append(main, ci, ww, del);
+    // Only active options are shown, so pills stay short. Click one to turn it
+    // off; options are turned on in the entry row (click the pill text to edit).
+    pill.append(main);
+    for (const [opt, on] of [[ci, rule.caseInsensitive], [ww, rule.wholeWord], [pt, rule.pattern], [sc, rule.seedIncludesText]]) {
+      if (on) pill.append(opt);
+    }
+    pill.append(del);
     box.appendChild(pill);
   }
 }
@@ -457,6 +645,9 @@ function startEdit(id) {
   $('#ce-rp').value = rule.replacement;
   $('#ce-ci').checked = rule.caseInsensitive;
   $('#ce-ww').checked = rule.wholeWord;
+  $('#ce-pt').checked = rule.pattern;
+  $('#ce-sc').checked = rule.seedIncludesText;
+  $('#ce-sc').disabled = !rule.pattern;
   $('#ce-add').textContent = 'Save';
   $('#ce-cancel').hidden = false;
   renderPills();
@@ -481,12 +672,16 @@ function submitEntry() {
   if (!ws) return;
   const keyword = $('#ce-kw').value;
   if (keyword.trim() === '') { toast('Keyword must not be empty.'); $('#ce-kw').focus(); return; }
+  const pattern = $('#ce-pt').checked;
   const values = {
     keyword,
     replacement: $('#ce-rp').value,
     caseInsensitive: $('#ce-ci').checked,
     wholeWord: $('#ce-ww').checked,
+    pattern,
+    seedIncludesText: pattern && $('#ce-sc').checked,
   };
+  if (pattern && values.replacement === '') values.replacement = keyword;
   if (editingRuleId) {
     const rule = ws.rules.find((r) => r.id === editingRuleId);
     if (rule) Object.assign(rule, values);
@@ -516,6 +711,7 @@ function selectWorkspace(id) {
   if (id === state.activeWorkspaceId) return;
   stashIo();
   flushPersist();
+  commitMappings();
   state.activeWorkspaceId = id;
   saveState();
   renderAll();
@@ -524,7 +720,8 @@ function selectWorkspace(id) {
 function addWorkspace() {
   stashIo();
   flushPersist();
-  const n = state.workspaces.length + 1;
+  commitMappings();
+  const n = visibleWorkspaces().filter((w) => !w.demo).length + 1;
   const ws = normalizeWorkspace({ name: `Workspace ${n}` });
   state.workspaces.push(ws);
   state.activeWorkspaceId = ws.id;
@@ -537,12 +734,31 @@ function addWorkspace() {
 function deleteWorkspace() {
   const ws = activeWorkspace();
   if (!ws) return;
-  if (!confirm(`Delete workspace "${ws.name}" and its ${ws.rules.length} keyword(s)? This cannot be undone.`)) return;
-  state.workspaces = state.workspaces.filter((w) => w.id !== ws.id);
-  ioBuffers.delete(ws.id);
-  state.activeWorkspaceId = state.workspaces[0]?.id || null;
+  if (ws.demo) {
+    if (!confirm(`Hide demo workspace "${ws.name}"? It is only hidden in this browser and can be restored from the sidebar.`)) return;
+    stashIo();
+    flushPersist();
+    commitMappings();
+    ws.hidden = true;
+  } else {
+    if (!confirm(`Delete workspace "${ws.name}" and its ${ws.rules.length} keyword(s)? This cannot be undone.`)) return;
+    commitMappings();
+    state.workspaces = state.workspaces.filter((w) => w.id !== ws.id);
+    ioBuffers.delete(ws.id);
+  }
+  state.activeWorkspaceId = visibleWorkspaces()[0]?.id || null;
   saveState();
   renderAll();
+}
+
+function restoreDemos() {
+  const hidden = hiddenDemos();
+  if (hidden.length === 0) return;
+  for (const ws of hidden) ws.hidden = false;
+  if (!activeWorkspace()) state.activeWorkspaceId = hidden[0].id;
+  saveState();
+  renderAll();
+  toast(`Restored ${hidden.length} demo workspace${hidden.length === 1 ? '' : 's'}.`);
 }
 
 function addRule() {
@@ -631,6 +847,7 @@ function setMode(mode) {
   if (mode === state.mode) return;
   stashIo();
   flushPersist();
+  commitMappings();
   state.mode = mode;
   saveState();
   renderMode();
@@ -656,13 +873,247 @@ function run() {
   const ws = activeWorkspace();
   if (!ws) return;
   const fn = isAnon() ? Replacer.anonymize : Replacer.deanonymize;
-  const res = fn($('#io-in').value, ws.rules, { longestFirst: ws.longestFirst });
+  const res = fn($('#io-in').value, ws.rules, engineOpts(ws));
   $('#io-out').value = res.text;
   $('#io-count').textContent = `${res.count} replacement${res.count === 1 ? '' : 's'}`;
+  lastHits = new Map(ws.rules.map((r, i) => [r.id, res.counts[i]]));
+  renderHits();
+  if (isAnon()) queueMappings(ws, res.mappings);
   stashIo();
   schedulePersist();
   updateHighlights();
   syncScroll($('#io-in'), $('#io-out'));
+}
+
+function engineOpts(ws) {
+  return { longestFirst: ws.longestFirst, seed: ws.seed, mappings: allMappings(ws) };
+}
+
+// ---------- Wildcard mappings ----------
+// Every replacement made by a wildcard rule is remembered as { from, to } so the
+// original can be restored when de-anonymizing. With live update the text is
+// re-run on every keystroke, so new mappings are collected first and only
+// written to the workspace once the text has settled (or on an explicit action).
+let pendingMappings = new Map(); // to -> from
+let pendingWsId = null;
+let mappingsTimer = null;
+
+function allMappings(ws) {
+  if (pendingWsId !== ws.id || pendingMappings.size === 0) return ws.mappings;
+  const extra = [];
+  for (const [to, from] of pendingMappings) extra.push({ from, to });
+  return ws.mappings.concat(extra);
+}
+
+function queueMappings(ws, found) {
+  if (pendingWsId !== ws.id) { commitMappings(); pendingWsId = ws.id; }
+  const known = new Set(ws.mappings.map((m) => m.to));
+  let changed = false;
+  for (const m of found) {
+    if (m.from === m.to || known.has(m.to) || pendingMappings.has(m.to)) continue;
+    pendingMappings.set(m.to, m.from);
+    changed = true;
+  }
+  if (!changed && mappingsTimer === null) return;
+  clearTimeout(mappingsTimer);
+  mappingsTimer = setTimeout(commitMappings, 1500);
+}
+
+function commitMappings() {
+  clearTimeout(mappingsTimer);
+  mappingsTimer = null;
+  const ws = state.workspaces.find((w) => w.id === pendingWsId);
+  const pending = pendingMappings;
+  pendingMappings = new Map();
+  pendingWsId = null;
+  if (!ws || pending.size === 0) return;
+  const known = new Set(ws.mappings.map((m) => m.to));
+  for (const [to, from] of pending) {
+    if (known.has(to)) continue; // first mapping for an anonymized value wins
+    ws.mappings.push({ from, to });
+    known.add(to);
+  }
+  saveState();
+  if (ws === activeWorkspace()) renderMappings();
+}
+
+function renderMappingsVisibility() {
+  const ws = activeWorkspace();
+  $('#mappings').hidden = !ws || (!hasPatternRules(ws) && ws.mappings.length === 0);
+}
+
+function renderMappings() {
+  const ws = activeWorkspace();
+  if (!ws) return;
+  renderMappingsVisibility();
+  $('#ws-seed').value = ws.seed;
+  $('#mappings-count').textContent = `(${ws.mappings.length})`;
+  $('#mappings-empty').hidden = ws.mappings.length > 0;
+  $('#mappings-scroll').hidden = ws.mappings.length === 0;
+  $('#btn-clear-mappings').disabled = ws.mappings.length === 0;
+  const tbody = $('#mappings-body');
+  tbody.innerHTML = '';
+  for (const m of ws.mappings) {
+    const tr = document.createElement('tr');
+    const from = document.createElement('td');
+    from.className = 'map-from';
+    from.textContent = m.from;
+    const to = document.createElement('td');
+    to.className = 'map-to';
+    to.textContent = m.to;
+    const del = document.createElement('td');
+    del.className = 'col-del';
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-icon';
+    btn.title = 'Forget this mapping';
+    btn.appendChild(svgIcon('close'));
+    btn.addEventListener('click', () => {
+      ws.mappings = ws.mappings.filter((x) => x !== m);
+      saveState();
+      renderMappings();
+      liveRun();
+    });
+    del.appendChild(btn);
+    tr.append(from, to, del);
+    tbody.appendChild(tr);
+  }
+}
+
+function renderMappingsCollapsed() {
+  const collapsed = state.mappingsCollapsed;
+  $('#mappings').classList.toggle('collapsed', collapsed);
+  $('#mappings-content').hidden = collapsed;
+  $('#btn-toggle-mappings').setAttribute('aria-expanded', String(!collapsed));
+}
+
+function setMappingsCollapsed(collapsed) {
+  state.mappingsCollapsed = collapsed;
+  saveState();
+  renderMappingsCollapsed();
+}
+
+function setSeed(seed) {
+  const ws = activeWorkspace();
+  if (!ws) return;
+  ws.seed = seed;
+  $('#ws-seed').value = seed;
+  saveState();
+  liveRun();
+}
+
+function newSeed() {
+  const ws = activeWorkspace();
+  if (!ws) return;
+  if (!confirm('Generate a new seed? Wildcard values will differ from now on. Recorded mappings are kept, so earlier texts can still be de-anonymized.')) return;
+  setSeed(Replacer.randomSeed());
+  toast('New seed generated.');
+}
+
+function clearMappings() {
+  const ws = activeWorkspace();
+  if (!ws || ws.mappings.length === 0) return;
+  if (!confirm(`Forget all ${ws.mappings.length} mapping(s) of "${ws.name}"? Texts anonymized with them can no longer be restored.`)) return;
+  commitMappings();
+  ws.mappings = [];
+  saveState();
+  renderMappings();
+  liveRun();
+}
+
+// ---------- Selection popup: turn a selection in the original text into a keyword ----------
+// A textarea gives no coordinates for its selection, so the text up to the
+// selection end is mirrored into a hidden element with the same metrics and a
+// marker span is measured there.
+const selPopup = {
+  el: null,
+  text: '',
+  template: null, // wildcard template suggested for the selection, if any
+  pattern: false, // whether the rule will be added as a wildcard rule
+  hide() { if (this.el && !this.el.hidden) this.el.hidden = true; },
+};
+
+// Reflect the wildcard toggle: replacement field shows the template or a literal name.
+function renderSelPopupMode() {
+  const ws = activeWorkspace();
+  const btn = $('#sel-popup-pt');
+  btn.classList.toggle('on', selPopup.pattern);
+  btn.hidden = !selPopup.template;
+  btn.title = selPopup.pattern
+    ? 'Wildcard rule: matches every value of this shape (' + selPopup.template + '). Click for a plain keyword.'
+    : 'Plain keyword: matches exactly this text. Click for a wildcard rule (' + selPopup.template + ').';
+  $('#sel-popup-rp').value = selPopup.pattern ? selPopup.template : nextAutoReplacement(ws);
+}
+
+function selectionCoords(ta, index) {
+  const m = $('#io-measure');
+  m.style.width = ta.clientWidth + 'px';
+  const text = ta.value;
+  m.innerHTML = escapeHtml(text.slice(0, index)) + '<span class="io-measure-marker">\u200b</span>' + escapeHtml(text.slice(index)) + '\n';
+  const marker = m.querySelector('.io-measure-marker');
+  return { left: marker.offsetLeft, top: marker.offsetTop - ta.scrollTop, height: marker.offsetHeight || 18 };
+}
+
+function nextAutoReplacement(ws) {
+  let n = 0;
+  for (const r of ws.rules) {
+    const mm = /^ANON_(\d+)$/.exec(r.replacement);
+    if (mm) n = Math.max(n, Number(mm[1]));
+  }
+  return 'ANON_' + (n + 1);
+}
+
+function showSelPopup() {
+  const ta = $('#io-in');
+  const ws = activeWorkspace();
+  if (!ws || !isAnon() || document.activeElement !== ta) { selPopup.hide(); return; }
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const raw = ta.value.slice(start, end);
+  const text = raw.trim();
+  if (!text || text.includes('\n') || text.length > 200) { selPopup.hide(); return; }
+  const pop = $('#sel-popup');
+  selPopup.el = pop;
+  if (pop.hidden || selPopup.text !== text) {
+    selPopup.text = text;
+    $('#sel-popup-kw').textContent = text;
+    // Numbers, ids, IPs, e-mails etc. get a wildcard suggestion; words stay literal.
+    selPopup.template = Replacer.suggestTemplate(text);
+    selPopup.pattern = !!selPopup.template;
+    renderSelPopupMode();
+  }
+  // Place it under the end of the selection, kept inside the field.
+  const c = selectionCoords(ta, end);
+  pop.hidden = false;
+  const field = ta.parentElement;
+  const maxLeft = Math.max(0, field.clientWidth - pop.offsetWidth - 4);
+  let top = c.top + c.height + 6;
+  if (top + pop.offsetHeight > ta.clientHeight) top = Math.max(0, c.top - pop.offsetHeight - 6);
+  pop.style.left = Math.min(Math.max(0, c.left), maxLeft) + 'px';
+  pop.style.top = top + 'px';
+}
+
+function addSelectedKeyword() {
+  const ws = activeWorkspace();
+  const keyword = selPopup.text;
+  if (!ws || !keyword) return;
+  const replacement = $('#sel-popup-rp').value;
+  const pattern = selPopup.pattern && !!selPopup.template;
+  const duplicate = ws.rules.find((r) => r.keyword === keyword && (!pattern || (r.pattern && r.replacement === replacement)))
+    || (pattern && ws.rules.find((r) => r.pattern && Replacer.describeRule(r).matches === Replacer.describeRule({ keyword, replacement, pattern }).matches));
+  if (duplicate) {
+    toast(pattern ? `A wildcard rule for this shape already exists.` : `"${keyword}" is already a keyword.`);
+    selPopup.hide();
+    return;
+  }
+  ws.rules.push(normalizeRule({ keyword, replacement, pattern }));
+  selPopup.hide();
+  saveState();
+  renderRules();
+  renderSidebar();
+  applyRulesHeight();
+  liveRun();
+  toast(pattern ? `Wildcard rule added: matches ${Replacer.describeRule({ keyword, replacement, pattern }).matches}` : `Keyword "${keyword}" added.`);
+  $('#io-in').focus();
 }
 
 // Live update: recompute the result after every change to text or keywords.
@@ -734,7 +1185,7 @@ function setupSync(a, b) {
 }
 
 function exportJson() {
-  const blob = new Blob([JSON.stringify({ version: 1, workspaces: state.workspaces }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ version: 1, workspaces: visibleWorkspaces() }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -764,13 +1215,14 @@ function importJson(file) {
     const existingIds = new Set(state.workspaces.map((w) => w.id));
     let added = 0;
     for (const raw of incoming) {
-      const ws = normalizeWorkspace(raw);
+      // Imported copies of demo workspaces become ordinary workspaces.
+      const ws = normalizeWorkspace(Object.assign({}, raw, { demo: false, hidden: false, help: undefined }));
       if (existingIds.has(ws.id)) ws.id = uid(); // never overwrite existing workspaces
       ws.rules.forEach((r) => { r.id = uid(); });
       state.workspaces.push(ws);
       added++;
     }
-    if (added && !activeWorkspace()) state.activeWorkspaceId = state.workspaces[0].id;
+    if (added && !activeWorkspace()) state.activeWorkspaceId = visibleWorkspaces()[0].id;
     saveState();
     renderAll();
     toast(`Imported ${added} workspace${added === 1 ? '' : 's'}.`);
@@ -785,6 +1237,11 @@ function resetAll() {
   ioBuffers.clear();
   clearTimeout(persistTimer);
   persistTimer = null;
+  clearTimeout(mappingsTimer);
+  mappingsTimer = null;
+  pendingMappings = new Map();
+  pendingWsId = null;
+  lastHits = new Map();
   localStorage.removeItem(STORAGE_KEY);
   renderAll();
   toast('All data cleared.');
@@ -793,8 +1250,38 @@ function resetAll() {
 // ---------- Wire up ----------
 $('#btn-add-workspace').addEventListener('click', addWorkspace);
 $('#btn-delete-workspace').addEventListener('click', deleteWorkspace);
+$('#btn-restore-demos').addEventListener('click', restoreDemos);
 $('#btn-add-rule').addEventListener('click', addRule);
 $('#btn-toggle-rules').addEventListener('click', () => setRulesCollapsed(!state.rulesCollapsed));
+$('#btn-toggle-mappings').addEventListener('click', () => setMappingsCollapsed(!state.mappingsCollapsed));
+
+// ---------- Help / Privacy dialogs ----------
+function openDialog(sel) {
+  const dlg = $(sel);
+  if (dlg.open) return;
+  dlg.showModal();
+  dlg.querySelector('.help-body').scrollTop = 0;
+}
+$('#btn-help').addEventListener('click', () => openDialog('#help-dialog'));
+$('#btn-privacy').addEventListener('click', () => openDialog('#privacy-dialog'));
+for (const dlg of document.querySelectorAll('dialog.help')) {
+  dlg.querySelector('.dialog-close').addEventListener('click', () => dlg.close());
+  // A click on the backdrop (outside the dialog box) closes it, like Esc does.
+  dlg.addEventListener('click', (e) => { if (e.target === e.currentTarget) dlg.close(); });
+}
+$('#btn-new-seed').addEventListener('click', newSeed);
+$('#btn-clear-mappings').addEventListener('click', clearMappings);
+$('#ws-seed').addEventListener('change', (e) => {
+  const v = e.target.value.trim();
+  if (!v) { toast('Seed must not be empty; kept the old one.'); e.target.value = activeWorkspace()?.seed || ''; return; }
+  setSeed(v);
+});
+$('#ws-seed').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
+$('#ce-pt').addEventListener('change', (e) => {
+  $('#ce-sc').disabled = !e.target.checked;
+  if (!e.target.checked) $('#ce-sc').checked = false;
+  if (e.target.checked && $('#ce-rp').value === '') $('#ce-rp').value = $('#ce-kw').value;
+});
 $('#btn-rules-height-reset').addEventListener('click', () => setRulesHeight(null));
 $('#view-table').addEventListener('click', () => setRulesView('table'));
 $('#view-compact').addEventListener('click', () => setRulesView('compact'));
@@ -826,8 +1313,8 @@ $('#ws-longest-first').addEventListener('change', (e) => {
 
 $('#mode-anon').addEventListener('click', () => setMode('anonymize'));
 $('#mode-deanon').addEventListener('click', () => setMode('deanonymize'));
-$('#btn-run').addEventListener('click', run);
-$('#btn-copy').addEventListener('click', () => copyText($('#io-out').value));
+$('#btn-run').addEventListener('click', () => { run(); commitMappings(); });
+$('#btn-copy').addEventListener('click', () => { commitMappings(); copyText($('#io-out').value); });
 $('#btn-clear').addEventListener('click', clearIo);
 
 $('#btn-export').addEventListener('click', exportJson);
@@ -840,7 +1327,7 @@ $('#file-import').addEventListener('change', (e) => {
 $('#btn-reset').addEventListener('click', resetAll);
 
 // Ctrl/Cmd+Enter inside the input runs the current mode.
-$('#io-in').addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') run(); });
+$('#io-in').addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { run(); commitMappings(); } });
 $('#io-in').addEventListener('input', () => {
   if (state.liveUpdate) { run(); return; }
   stashIo();
@@ -848,8 +1335,28 @@ $('#io-in').addEventListener('input', () => {
   updateHighlights();
 });
 $('#live-update').addEventListener('change', (e) => setLiveUpdate(e.target.checked));
+
+// Selection popup wiring
+{
+  const ta = $('#io-in');
+  const pop = $('#sel-popup');
+  ta.addEventListener('mouseup', () => setTimeout(showSelPopup, 0));
+  ta.addEventListener('keyup', (e) => { if (e.shiftKey || e.key === 'Shift') showSelPopup(); });
+  ta.addEventListener('select', () => setTimeout(showSelPopup, 0));
+  ta.addEventListener('input', () => selPopup.hide());
+  ta.addEventListener('scroll', () => { if (!pop.hidden) showSelPopup(); });
+  document.addEventListener('mousedown', (e) => {
+    if (!pop.hidden && !pop.contains(e.target) && e.target !== ta) selPopup.hide();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) { selPopup.hide(); ta.focus(); } });
+  $('#sel-popup-add').addEventListener('click', addSelectedKeyword);
+  $('#sel-popup-pt').addEventListener('click', () => { selPopup.pattern = !selPopup.pattern; renderSelPopupMode(); $('#sel-popup-rp').focus(); });
+  $('#sel-popup-close').addEventListener('click', () => { selPopup.hide(); ta.focus(); });
+  $('#sel-popup-rp').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addSelectedKeyword(); } });
+  $('#sel-popup-rp').addEventListener('keydown', overwriteKeydown);
+}
 $('#ws-persist-texts').addEventListener('change', (e) => setPersistTexts(e.target.checked));
-window.addEventListener('pagehide', flushPersist);
+window.addEventListener('pagehide', () => { flushPersist(); commitMappings(); });
 
 setupSync($('#io-in'), $('#io-out'));
 renderLive();

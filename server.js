@@ -19,8 +19,29 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+// Security headers, sent with every response. The Content-Security-Policy makes the
+// browser itself refuse any outgoing connection from the page (fetch, XHR,
+// WebSocket, form posts, beacons) and any resource that is not served from this
+// origin, so "nothing is ever sent" holds even if a script were tampered with.
+const SECURITY_HEADERS = {
+  'Content-Security-Policy': [
+    "default-src 'none'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "img-src 'self'",
+    "connect-src 'none'",
+    "form-action 'none'",
+    "base-uri 'none'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+  ].join('; '),
+  'Referrer-Policy': 'no-referrer',
+  'X-Content-Type-Options': 'nosniff',
+  'Cache-Control': 'no-cache',
+};
+
 function send(res, status, body, headers) {
-  res.writeHead(status, Object.assign({ 'Cache-Control': 'no-cache' }, headers || {}));
+  res.writeHead(status, Object.assign({}, SECURITY_HEADERS, headers || {}));
   res.end(body);
 }
 
@@ -48,11 +69,10 @@ const server = http.createServer((req, res) => {
       return send(res, 404, 'Not Found', { 'Content-Type': 'text/plain' });
     }
     const type = MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
-    res.writeHead(200, {
+    res.writeHead(200, Object.assign({}, SECURITY_HEADERS, {
       'Content-Type': type,
       'Content-Length': stat.size,
-      'Cache-Control': 'no-cache',
-    });
+    }));
     if (req.method === 'HEAD') return res.end();
     fs.createReadStream(filePath).pipe(res);
   });
