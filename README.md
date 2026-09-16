@@ -162,7 +162,9 @@ nginx pass upstream headers through by default; do not override them with
    kept so earlier texts still restore. Single mappings can be removed, or
    all with *Clear mappings*. The section is hidden until the workspace has a
    wildcard rule or a mapping.
-   *Table* / *Compact* switches the view. Compact shows one entry row
+   *Table* / *Compact* switches the view (remembered per workspace, like the
+   collapsed state of the Keywords and Wildcard mappings sections, and
+   included in the export). Compact shows one entry row
    (keyword, replacement, `Aa` = case-insensitive, `W` = whole word; Enter
    adds) and the existing keywords as pills `keyword → replacement [icons] ×`.
    A pill only shows the options that are on, as icons (letter case =
@@ -207,7 +209,7 @@ nginx pass upstream headers through by default; do not override them with
    existing* (keeps id and position, takes everything else from the file) or
    *Import as variant* (adds a copy named "Name (2)"). New ones are simply
    added. Files and the stored state carry a
-   schema `version` (currently 2); older formats are migrated on load and on
+   schema `version` (currently 3); older formats are migrated on load and on
    import by `public/migrations.js`, data from a newer app version loads with
    a warning.
 6. **Reset all**: wipes everything from this browser's localStorage.

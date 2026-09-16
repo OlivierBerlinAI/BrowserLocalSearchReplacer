@@ -101,7 +101,7 @@ test('existing state without demos gets them appended, active workspace kept', a
   assert.deepStrictEqual(names, ['Mine', 'Demo 1 – Basics', 'Demo 2 – Wildcards (JSON)', 'Demo 3 – Log file']);
   assert.strictEqual(await page.inputValue('#ws-name'), 'Mine');
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('blsr.state.v1')));
-  assert.strictEqual(stored.version, 2, 'old state is re-saved with the current schema version');
+  assert.strictEqual(stored.version, 3, 'old state is re-saved with the current schema version');
   // Data from a newer version loads with a warning toast.
   await page.evaluate(() => localStorage.setItem('blsr.state.v1', JSON.stringify({ version: 99, workspaces: [{ id: 'n', name: 'Newer', rules: [] }] })));
   await page.reload();
@@ -235,6 +235,21 @@ test('collapsed sections hide their actions and rotate the chevron', async (page
   await page.reload();
   await wait(page, 200);
   assert.ok(await page.isHidden('#btn-add-rule'), 'collapsed state persisted');
+  // View state is per workspace: another workspace keeps its own.
+  await page.click('#workspace-list li:nth-child(3)');
+  await wait(page, 100);
+  assert.ok(await page.isVisible('#btn-add-rule'), 'other workspace not collapsed');
+  await page.click('#view-compact');
+  await page.click('#workspace-list li:nth-child(2)');
+  await wait(page, 100);
+  assert.ok(await page.isHidden('#btn-add-rule') && await page.isHidden('#compact-entry'), 'first workspace still collapsed, table view');
+  await page.click('#workspace-list li:nth-child(3)');
+  await wait(page, 100);
+  assert.ok(await page.isVisible('#compact-entry'), 'third workspace remembers compact view');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('blsr.state.v1')));
+  assert.strictEqual(stored.workspaces[1].rulesCollapsed, true);
+  assert.strictEqual(stored.workspaces[2].rulesView, 'compact');
+  assert.ok(!('rulesView' in stored), 'no global view state any more');
 });
 
 // ---------- Selection popup ----------
@@ -375,7 +390,8 @@ test('export dialog: select all / subset; file has seed and mappings', async (pa
   assert.strictEqual(await page.textContent('#export-confirm'), 'Export 2 workspaces');
   const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-confirm')]);
   const content = JSON.parse(require('fs').readFileSync(await download.path(), 'utf8'));
-  assert.strictEqual(content.version, 2);
+  assert.strictEqual(content.version, 3);
+  assert.deepStrictEqual([content.workspaces[0].rulesView, content.workspaces[0].rulesCollapsed, content.workspaces[0].mappingsCollapsed], ['table', false, false], 'view state is exported');
   assert.deepStrictEqual(content.workspaces.map((w) => w.id), ['demo-2-wildcards', 'demo-3-logfile']);
   const demo2 = content.workspaces[0];
   assert.strictEqual(demo2.seed, 'demo2-wildcards-seed');

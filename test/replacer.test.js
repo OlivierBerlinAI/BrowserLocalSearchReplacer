@@ -251,29 +251,38 @@ t('suggestTemplate guesses the shape of a selection', () => {
 const M = require('../public/migrations.js');
 
 t('migrate: bare array and version 1 come out as the current version', () => {
-  assert.strictEqual(M.SCHEMA_VERSION, 2);
+  assert.strictEqual(M.SCHEMA_VERSION, 3);
   const a = M.migrate([{ id: 'x', name: 'X', rules: [] }]);
-  assert.deepStrictEqual(a, { data: { workspaces: [{ id: 'x', name: 'X', rules: [] }], version: 2 }, from: 1, warnings: [] });
+  assert.deepStrictEqual(a, { data: { workspaces: [{ id: 'x', name: 'X', rules: [], rulesView: 'table', rulesCollapsed: false, mappingsCollapsed: false }], version: 3 }, from: 1, warnings: [] });
   const b = M.migrate({ version: 1, workspaces: [{ id: 'y' }], mode: 'deanonymize' });
-  assert.strictEqual(b.data.version, 2);
+  assert.strictEqual(b.data.version, 3);
   assert.strictEqual(b.data.mode, 'deanonymize');
-  assert.deepStrictEqual(b.data.workspaces, [{ id: 'y' }]);
   assert.strictEqual(b.from, 1);
 });
 
+t('migrate v2 -> v3 copies the global view state into every workspace', () => {
+  const r = M.migrate({ version: 2, rulesView: 'compact', rulesCollapsed: true, mappingsCollapsed: false, workspaces: [{ id: 'a' }, { id: 'b', rulesView: 'table', mappingsCollapsed: true }] });
+  assert.strictEqual(r.data.version, 3);
+  assert.deepStrictEqual(r.data.workspaces, [
+    { id: 'a', rulesView: 'compact', rulesCollapsed: true, mappingsCollapsed: false },
+    { id: 'b', rulesView: 'table', rulesCollapsed: true, mappingsCollapsed: true },
+  ]);
+  assert.ok(!('rulesView' in r.data) && !('rulesCollapsed' in r.data) && !('mappingsCollapsed' in r.data), 'global fields removed');
+});
+
 t('migrate: current version passes through, newer version warns, garbage is tolerated', () => {
-  const cur = M.migrate({ version: 2, workspaces: [] });
+  const cur = M.migrate({ version: 3, workspaces: [] });
   assert.deepStrictEqual(cur.warnings, []);
-  assert.strictEqual(cur.from, 2);
+  assert.strictEqual(cur.from, 3);
   const newer = M.migrate({ version: 99, workspaces: [{ id: 'z', futureField: true }] });
   assert.strictEqual(newer.warnings.length, 1);
   assert.ok(newer.warnings[0].includes('newer version'));
-  assert.strictEqual(newer.data.version, 2);
+  assert.strictEqual(newer.data.version, 3);
   assert.strictEqual(newer.data.workspaces[0].futureField, true, 'unknown fields are kept for the normalizer to decide');
   for (const junk of [null, undefined, 42, 'str', {}, { version: 'abc' }]) {
     const r = M.migrate(junk);
     assert.deepStrictEqual(r.data.workspaces, []);
-    assert.strictEqual(r.data.version, 2);
+    assert.strictEqual(r.data.version, 3);
   }
 });
 

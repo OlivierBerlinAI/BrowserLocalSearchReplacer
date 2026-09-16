@@ -9,7 +9,7 @@ function uid() {
 }
 
 function defaultState() {
-  return { version: Migrations.SCHEMA_VERSION, activeWorkspaceId: null, workspaces: [], mode: 'anonymize', rulesCollapsed: false, mappingsCollapsed: false, liveUpdate: true, rulesHeight: null, rulesView: 'table' };
+  return { version: Migrations.SCHEMA_VERSION, activeWorkspaceId: null, workspaces: [], mode: 'anonymize', liveUpdate: true, rulesHeight: null };
 }
 
 function normalizeRule(r) {
@@ -57,6 +57,10 @@ function normalizeWorkspace(w) {
     // wherever the workspace is.
     seed: typeof w?.seed === 'string' && w.seed.trim() ? w.seed.trim() : Replacer.randomSeed(),
     mappings: Array.isArray(w?.mappings) ? w.mappings.map(normalizeMapping).filter(Boolean) : [],
+    // View state, kept per workspace so it travels with the export.
+    rulesView: w?.rulesView === 'compact' ? 'compact' : 'table',
+    rulesCollapsed: w?.rulesCollapsed === true,
+    mappingsCollapsed: w?.mappingsCollapsed === true,
   };
   // Demo workspaces ship with the app; "deleting" one only hides it.
   if (w?.demo === true) {
@@ -87,11 +91,8 @@ function normalizeState(input) {
     if (!s.workspaces.some((w) => w.id === demo.id)) s.workspaces.push(normalizeWorkspace(demo));
   }
   if (raw?.mode === 'deanonymize') s.mode = 'deanonymize';
-  s.rulesCollapsed = raw?.rulesCollapsed === true;
-  s.mappingsCollapsed = raw?.mappingsCollapsed === true;
   s.liveUpdate = raw?.liveUpdate !== false;
   s.rulesHeight = Number.isFinite(raw?.rulesHeight) && raw.rulesHeight > 0 ? raw.rulesHeight : null;
-  s.rulesView = raw?.rulesView === 'compact' ? 'compact' : 'table';
   const visible = s.workspaces.filter((w) => !w.hidden);
   if (typeof raw?.activeWorkspaceId === 'string' && visible.some((w) => w.id === raw.activeWorkspaceId)) {
     s.activeWorkspaceId = raw.activeWorkspaceId;
@@ -336,7 +337,7 @@ function renderDemoNote(ws) {
 }
 
 function renderRulesCollapsed() {
-  const collapsed = state.rulesCollapsed;
+  const collapsed = !!activeWorkspace()?.rulesCollapsed;
   $('.rules').classList.toggle('collapsed', collapsed);
   $('#rules-content').hidden = collapsed;
   $('#btn-toggle-rules').setAttribute('aria-expanded', String(!collapsed));
@@ -389,7 +390,9 @@ new ResizeObserver(() => {
 }).observe($('#rules-scroll'));
 
 function setRulesCollapsed(collapsed) {
-  state.rulesCollapsed = collapsed;
+  const ws = activeWorkspace();
+  if (!ws) return;
+  ws.rulesCollapsed = collapsed;
   saveState();
   renderRulesCollapsed();
 }
@@ -523,7 +526,7 @@ function renderHits() {
 // ---------- Compact view: entry row + pills ----------
 let editingRuleId = null;
 
-function isCompact() { return state.rulesView === 'compact'; }
+function isCompact() { return activeWorkspace()?.rulesView === 'compact'; }
 
 function renderRulesView() {
   const compact = isCompact();
@@ -540,7 +543,9 @@ function renderRulesView() {
 }
 
 function setRulesView(view) {
-  state.rulesView = view;
+  const ws = activeWorkspace();
+  if (!ws) return;
+  ws.rulesView = view;
   saveState();
   renderRules(); // table edits do not re-render live, so sync both views now
   renderRulesView();
@@ -772,7 +777,7 @@ function restoreDemos() {
 function addRule() {
   const ws = activeWorkspace();
   if (!ws) return;
-  if (state.rulesCollapsed) setRulesCollapsed(false);
+  if (ws.rulesCollapsed) setRulesCollapsed(false);
   ws.rules.push(normalizeRule({}));
   saveState();
   renderRules();
@@ -988,14 +993,16 @@ function renderMappings() {
 }
 
 function renderMappingsCollapsed() {
-  const collapsed = state.mappingsCollapsed;
+  const collapsed = !!activeWorkspace()?.mappingsCollapsed;
   $('#mappings').classList.toggle('collapsed', collapsed);
   $('#mappings-content').hidden = collapsed;
   $('#btn-toggle-mappings').setAttribute('aria-expanded', String(!collapsed));
 }
 
 function setMappingsCollapsed(collapsed) {
-  state.mappingsCollapsed = collapsed;
+  const ws = activeWorkspace();
+  if (!ws) return;
+  ws.mappingsCollapsed = collapsed;
   saveState();
   renderMappingsCollapsed();
 }
@@ -1429,6 +1436,7 @@ function applyImport() {
       Object.assign(existing, {
         name: ws.name, longestFirst: ws.longestFirst, persistTexts: ws.persistTexts,
         rules: ws.rules, seed: ws.seed, mappings: ws.mappings, hidden: false,
+        rulesView: ws.rulesView, rulesCollapsed: ws.rulesCollapsed, mappingsCollapsed: ws.mappingsCollapsed,
       });
       if (ws.texts) existing.texts = ws.texts; else delete existing.texts;
       ioBuffers.delete(existing.id);
@@ -1482,8 +1490,8 @@ $('#btn-add-workspace').addEventListener('click', addWorkspace);
 $('#btn-delete-workspace').addEventListener('click', deleteWorkspace);
 $('#btn-restore-demos').addEventListener('click', restoreDemos);
 $('#btn-add-rule').addEventListener('click', addRule);
-$('#btn-toggle-rules').addEventListener('click', () => setRulesCollapsed(!state.rulesCollapsed));
-$('#btn-toggle-mappings').addEventListener('click', () => setMappingsCollapsed(!state.mappingsCollapsed));
+$('#btn-toggle-rules').addEventListener('click', () => setRulesCollapsed(!activeWorkspace()?.rulesCollapsed));
+$('#btn-toggle-mappings').addEventListener('click', () => setMappingsCollapsed(!activeWorkspace()?.mappingsCollapsed));
 
 // ---------- Help / Privacy dialogs ----------
 function openDialog(sel) {

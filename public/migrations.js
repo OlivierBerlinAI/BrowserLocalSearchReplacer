@@ -11,6 +11,10 @@
 //      seed and mappings, demo workspaces (demo, hidden, help),
 //      mappingsCollapsed. Older data is valid as is; the normalizers fill in
 //      the defaults, so the migration only stamps the version.
+//   3  keyword view (rulesView: table|compact), rulesCollapsed and
+//      mappingsCollapsed are stored per workspace (and therefore exported)
+//      instead of once per browser; the migration copies the global values
+//      into every workspace.
 //
 // Adding a version: bump SCHEMA_VERSION, add MIGRATIONS[<old version>] that
 // converts from <old version> to <old version + 1>, and describe it above.
@@ -18,11 +22,24 @@
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.Migrations = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
 
   const MIGRATIONS = {
     1: function v1to2(s) {
       // Nothing to rewrite: new fields are optional and defaulted on load.
+      return s;
+    },
+    2: function v2to3(s) {
+      const view = s.rulesView === 'compact' ? 'compact' : 'table';
+      for (const w of s.workspaces) {
+        if (!w || typeof w !== 'object') continue;
+        if (w.rulesView !== 'compact' && w.rulesView !== 'table') w.rulesView = view;
+        if (typeof w.rulesCollapsed !== 'boolean') w.rulesCollapsed = s.rulesCollapsed === true;
+        if (typeof w.mappingsCollapsed !== 'boolean') w.mappingsCollapsed = s.mappingsCollapsed === true;
+      }
+      delete s.rulesView;
+      delete s.rulesCollapsed;
+      delete s.mappingsCollapsed;
       return s;
     },
   };
