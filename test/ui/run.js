@@ -265,7 +265,9 @@ test('selection popup adds plain keywords and suggested wildcard rules', async (
 });
 
 // ---------- Dialogs, export/import ----------
-test('help and privacy dialogs open and close', async (page) => {
+test('help and how-it\'s-done dialogs open and close', async (page) => {
+  assert.strictEqual(await page.textContent('#btn-privacy'), "How it's done");
+  assert.strictEqual(await page.textContent('#privacy-dialog h2'), "How it's done");
   for (const [btn, dlg] of [['#btn-help', '#help-dialog'], ['#btn-privacy', '#privacy-dialog']]) {
     await page.click(btn);
     assert.ok(await page.evaluate((s) => document.querySelector(s).open, dlg));

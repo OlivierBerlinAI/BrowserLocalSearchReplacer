@@ -8,7 +8,7 @@ workspace-specific keyword lists.
 - **Client:** plain HTML/CSS/JS. Workspaces and keywords are stored **only in
   the browser's `localStorage`**. Nothing is ever sent to the server.
 
-## Privacy
+## How it's done (data handling)
 
 The server only serves the files in `public/` (GET/HEAD, no logging, no
 storage); the page makes no network requests after loading, and every response
@@ -20,8 +20,9 @@ enter stays in the browser's localStorage, which is **not encrypted**: it is
 plain data in the browser profile on disk, readable by anyone with access to
 that OS account. Wildcard mappings contain the original values. Do not use
 real passwords or secrets as keywords, and use the app over a LAN only if you
-trust that network (plain HTTP can be tampered with in transit). The *Privacy*
-link in the sidebar opens a dialog with the details.
+trust that network (plain HTTP can be tampered with in transit). The *How it's
+done* link in the sidebar opens a dialog with the details; *Imprint* and
+*Privacy Policy* next to it are the legal pages.
 
 ## Requirements
 
