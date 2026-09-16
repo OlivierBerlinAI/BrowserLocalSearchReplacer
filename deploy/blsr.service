@@ -1,0 +1,36 @@
+# systemd unit for running the app without Docker. Install:
+#   sudo useradd --system --home /opt/blsr --shell /usr/sbin/nologin blsr
+#   sudo git clone <repo> /opt/blsr && sudo chown -R blsr:blsr /opt/blsr
+#   sudo cp /opt/blsr/deploy/blsr.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now blsr
+# The app then listens on 127.0.0.1:8080; put Caddy or nginx with HTTPS in front
+# (see deploy/Caddyfile.host and deploy/nginx.conf).
+[Unit]
+Description=Browser Local Search & Replacer (static server)
+After=network.target
+
+[Service]
+Type=simple
+User=blsr
+Group=blsr
+WorkingDirectory=/opt/blsr
+Environment=NODE_ENV=production
+Environment=PORT=8080
+Environment=HOST=127.0.0.1
+ExecStart=/usr/bin/node /opt/blsr/server.js
+Restart=on-failure
+RestartSec=3
+
+# Hardening: the server only reads ./public and never writes anything.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

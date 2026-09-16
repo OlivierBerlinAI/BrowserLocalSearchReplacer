@@ -6,10 +6,15 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/replacer.test.js"
+    "test": "node test/replacer.test.js",
+    "test:ui": "node test/ui/run.js",
+    "test:all": "npm test && npm run test:ui"
   },
   "engines": {
     "node": ">=18"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
 }

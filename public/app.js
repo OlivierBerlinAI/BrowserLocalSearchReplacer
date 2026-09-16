@@ -9,7 +9,7 @@ function uid() {
 }
 
 function defaultState() {
-  return { version: 1, activeWorkspaceId: null, workspaces: [], mode: 'anonymize', rulesCollapsed: false, mappingsCollapsed: false, liveUpdate: true, rulesHeight: null, rulesView: 'table' };
+  return { version: Migrations.SCHEMA_VERSION, activeWorkspaceId: null, workspaces: [], mode: 'anonymize', rulesCollapsed: false, mappingsCollapsed: false, liveUpdate: true, rulesHeight: null, rulesView: 'table' };
 }
 
 function normalizeRule(r) {
@@ -69,7 +69,15 @@ function normalizeWorkspace(w) {
   return ws;
 }
 
-function normalizeState(raw) {
+// Warnings collected while loading (e.g. data from a newer app version); shown
+// once the UI is up.
+const loadWarnings = [];
+let loadedFromVersion = Migrations.SCHEMA_VERSION;
+
+function normalizeState(input) {
+  const { data: raw, warnings, from } = Migrations.migrate(input);
+  loadWarnings.push(...warnings);
+  loadedFromVersion = from;
   const s = defaultState();
   if (raw && Array.isArray(raw.workspaces)) {
     s.workspaces = raw.workspaces.map(normalizeWorkspace);
@@ -1185,7 +1193,7 @@ function setupSync(a, b) {
 }
 
 function exportJson() {
-  const blob = new Blob([JSON.stringify({ version: 1, workspaces: visibleWorkspaces() }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ version: Migrations.SCHEMA_VERSION, workspaces: visibleWorkspaces() }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -1207,11 +1215,13 @@ function importJson(file) {
       toast('Import failed: file is not valid JSON.');
       return;
     }
-    const incoming = Array.isArray(parsed) ? parsed : parsed?.workspaces;
-    if (!Array.isArray(incoming)) {
+    if (!Array.isArray(parsed) && !Array.isArray(parsed?.workspaces)) {
       toast('Import failed: no "workspaces" array found.');
       return;
     }
+    const migrated = Migrations.migrate(parsed);
+    const incoming = migrated.data.workspaces;
+    for (const w of migrated.warnings) toast(w);
     const existingIds = new Set(state.workspaces.map((w) => w.id));
     let added = 0;
     for (const raw of incoming) {
@@ -1362,3 +1372,6 @@ setupSync($('#io-in'), $('#io-out'));
 renderLive();
 renderMode();
 renderAll();
+if (loadWarnings.length) toast(loadWarnings.join(' '));
+// Migrated (or newer) data is written back in the current format right away.
+if (loadedFromVersion !== Migrations.SCHEMA_VERSION && state.workspaces.length) saveState();

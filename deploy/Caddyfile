@@ -1,0 +1,9 @@
+# Caddy reverse proxy for the app. Caddy obtains and renews the TLS certificate
+# automatically. The security headers (Content-Security-Policy etc.) come from
+# the Node server and are passed through unchanged; only HSTS is added here
+# because it is meaningful only on HTTPS.
+{$DOMAIN} {
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	reverse_proxy app:8080
+}

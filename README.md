@@ -45,8 +45,47 @@ PORT=3000 HOST=127.0.0.1 npm start
 ## Test
 
 ```bash
-npm test
+npm test          # engine unit tests (no dependencies)
+npm run test:ui   # browser tests with Playwright (headless Chromium)
+npm run test:all
 ```
+
+The browser tests need Playwright's Chromium once: `npm install` then
+`npx playwright install chromium` (about 115 MB). Alternatively point
+`BLSR_BROWSER_PATH` at an existing Chromium/Chrome binary. Each test starts the
+server on a free port, opens a fresh page with an empty localStorage and drives
+the real UI (rules, wildcards, mappings, demos, selection popup, dialogs, CSP).
+The GitHub Actions workflow in `.github/workflows/test.yml` runs both suites on
+every push.
+
+## Deployment
+
+The server is stateless and only reads `public/`, so any static host works.
+Put HTTPS in front of it: without it, the JavaScript can be tampered with on
+the way to the user, and the browser's Web Crypto API (needed for future
+encryption features) is only available on HTTPS or localhost.
+
+**Docker + Caddy (automatic Let's Encrypt certificates):**
+
+```bash
+DOMAIN=anon.example.com docker compose up -d
+```
+
+`docker-compose.yml` builds the app image (`Dockerfile`, Node 22 Alpine,
+runs as the unprivileged `node` user, health check) and starts Caddy with
+`deploy/Caddyfile`, which proxies to the app and adds HSTS. Ports 80/443 must
+be reachable and the DNS record must point at the server.
+
+**Without Docker (systemd + Caddy or nginx on the host):**
+`deploy/blsr.service` runs `server.js` as a dedicated user on `127.0.0.1:8080`
+with systemd hardening; `deploy/Caddyfile.host` or `deploy/nginx.conf` provide
+the HTTPS front. Install steps are in the comments of each file.
+
+After deploying, open the site, then in the browser's developer tools check
+the response headers of `/`: `Content-Security-Policy` and
+`X-Content-Type-Options` must come through the proxy unchanged (both Caddy and
+nginx pass upstream headers through by default; do not override them with
+`add_header`/`header` directives of your own).
 
 ## Usage
 
@@ -152,7 +191,10 @@ npm test
    `<mark>` elements.)
 5. **Export / Import JSON**: back up or move workspaces between browsers
    (including seed and wildcard mappings). Import always *adds* workspaces;
-   it never overwrites existing ones.
+   it never overwrites existing ones. Files and the stored state carry a
+   schema `version` (currently 2); older formats are migrated on load and on
+   import by `public/migrations.js`, data from a newer app version loads with
+   a warning.
 6. **Reset all**: wipes everything from this browser's localStorage.
 
 Keyboard: `Ctrl/Cmd+Enter` in the input runs the current mode; `Enter` in a
@@ -173,8 +215,11 @@ server.js            static file server (no state)
 public/index.html    UI markup
 public/styles.css    styling
 public/replacer.js   pure search/replace engine (browser + Node)
+public/migrations.js schema version + migrations for stored/exported data
 public/demos.js      the three demo workspaces
 public/app.js        UI logic + localStorage persistence
 public/favicon.svg   tab icon
-test/replacer.test.js
+test/replacer.test.js  engine unit tests
+test/ui/             browser tests (Playwright harness + tests)
+Dockerfile, docker-compose.yml, deploy/  deployment (Docker+Caddy, systemd, nginx)
 ```

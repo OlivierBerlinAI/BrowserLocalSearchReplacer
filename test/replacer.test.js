@@ -247,4 +247,34 @@ t('suggestTemplate guesses the shape of a selection', () => {
   }
 });
 
+// ---------- Schema migrations ----------
+const M = require('../public/migrations.js');
+
+t('migrate: bare array and version 1 come out as the current version', () => {
+  assert.strictEqual(M.SCHEMA_VERSION, 2);
+  const a = M.migrate([{ id: 'x', name: 'X', rules: [] }]);
+  assert.deepStrictEqual(a, { data: { workspaces: [{ id: 'x', name: 'X', rules: [] }], version: 2 }, from: 1, warnings: [] });
+  const b = M.migrate({ version: 1, workspaces: [{ id: 'y' }], mode: 'deanonymize' });
+  assert.strictEqual(b.data.version, 2);
+  assert.strictEqual(b.data.mode, 'deanonymize');
+  assert.deepStrictEqual(b.data.workspaces, [{ id: 'y' }]);
+  assert.strictEqual(b.from, 1);
+});
+
+t('migrate: current version passes through, newer version warns, garbage is tolerated', () => {
+  const cur = M.migrate({ version: 2, workspaces: [] });
+  assert.deepStrictEqual(cur.warnings, []);
+  assert.strictEqual(cur.from, 2);
+  const newer = M.migrate({ version: 99, workspaces: [{ id: 'z', futureField: true }] });
+  assert.strictEqual(newer.warnings.length, 1);
+  assert.ok(newer.warnings[0].includes('newer version'));
+  assert.strictEqual(newer.data.version, 2);
+  assert.strictEqual(newer.data.workspaces[0].futureField, true, 'unknown fields are kept for the normalizer to decide');
+  for (const junk of [null, undefined, 42, 'str', {}, { version: 'abc' }]) {
+    const r = M.migrate(junk);
+    assert.deepStrictEqual(r.data.workspaces, []);
+    assert.strictEqual(r.data.version, 2);
+  }
+});
+
 console.log(`\n${passed} tests passed`);

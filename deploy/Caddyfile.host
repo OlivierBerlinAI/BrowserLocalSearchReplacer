@@ -1,0 +1,8 @@
+# Caddy on the host (no Docker), in front of the systemd service on 127.0.0.1:8080.
+# Install caddy, copy this file to /etc/caddy/Caddyfile, replace the domain,
+# then: sudo systemctl reload caddy
+anon.example.com {
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	reverse_proxy 127.0.0.1:8080
+}
