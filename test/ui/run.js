@@ -2,7 +2,7 @@
 // Browser tests. Run with `npm run test:ui` (needs `npx playwright install chromium`
 // once, or BLSR_BROWSER_PATH pointing at a Chromium/Chrome binary).
 const assert = require('assert');
-const { test, run, selectInInput } = require('./harness');
+const { test, run, selectInInput, clickInInput } = require('./harness');
 
 const wait = (page, ms) => page.waitForTimeout(ms);
 
@@ -243,7 +243,7 @@ test('selection popup adds plain keywords and suggested wildcard rules', async (
   await page.fill('#io-in', 'Order 4711 for Anna Berger: price 21.0, sku BB12345678, ip 192.168.178.42');
   await selectInInput(page, 'Anna Berger');
   assert.ok(await page.isVisible('#sel-popup'));
-  assert.strictEqual(await page.textContent('#sel-popup-kw'), 'Anna Berger');
+  assert.strictEqual(await page.inputValue('#sel-popup-kw'), 'Anna Berger');
   assert.strictEqual(await page.inputValue('#sel-popup-rp'), 'ANON_1');
   assert.ok(await page.isHidden('#sel-popup-pt'), 'no wildcard toggle for names');
   await page.fill('#sel-popup-rp', 'PERSON_1');
@@ -252,7 +252,18 @@ test('selection popup adds plain keywords and suggested wildcard rules', async (
   assert.ok(await page.isHidden('#sel-popup'));
   assert.ok((await page.inputValue('#io-out')).includes('PERSON_1'));
 
-  const cases = [['21.0', '%d'], ['BB12345678', 'BB%i'], ['192.168.178.42', '%i.%i.%i.%i'], ['4711', '%i']];
+  // Toggle between wildcard suggestion and plain keyword (before any rule matches the number).
+  await selectInInput(page, '4711');
+  assert.strictEqual(await page.inputValue('#sel-popup-rp'), '%i');
+  await page.click('#sel-popup-pt');
+  assert.strictEqual(await page.inputValue('#sel-popup-rp'), 'ANON_1', 'no ANON_ rule exists yet');
+  await page.click('#sel-popup-pt');
+  assert.strictEqual(await page.inputValue('#sel-popup-rp'), '%i');
+  await page.keyboard.press('Escape');
+  assert.ok(await page.isHidden('#sel-popup'));
+
+  // 4711 first: once a %d rule exists it would match 4711 and open edit mode instead.
+  const cases = [['4711', '%i'], ['21.0', '%d'], ['BB12345678', 'BB%i'], ['192.168.178.42', '%i.%i.%i.%i']];
   for (const [needle, tpl] of cases) {
     await selectInInput(page, needle);
     assert.strictEqual(await page.inputValue('#sel-popup-rp'), tpl, needle);
@@ -261,24 +272,71 @@ test('selection popup adds plain keywords and suggested wildcard rules', async (
     await wait(page, 150);
   }
   const rules = await page.evaluate(() => activeWorkspace().rules.map((r) => (r.pattern ? '%' : '') + r.keyword + '->' + r.replacement));
-  assert.deepStrictEqual(rules, ['Anna Berger->PERSON_1', '%21.0->%d', '%BB12345678->BB%i', '%192.168.178.42->%i.%i.%i.%i', '%4711->%i']);
+  assert.deepStrictEqual(rules, ['Anna Berger->PERSON_1', '%4711->%i', '%21.0->%d', '%BB12345678->BB%i', '%192.168.178.42->%i.%i.%i.%i']);
   assert.ok(/^Order \d{4} for PERSON_1: price \d\d\.\d, sku BB\d{8}, ip [\d.]+$/.test(await page.inputValue('#io-out')));
 
-  // Toggle to a plain keyword, duplicate protection, Esc, no popup in de-anonymize mode.
+  // Selecting exactly a highlighted match opens edit mode for its rule.
   await selectInInput(page, '4711');
-  await page.click('#sel-popup-pt');
-  assert.strictEqual(await page.inputValue('#sel-popup-rp'), 'ANON_1', 'no ANON_ rule exists yet');
+  assert.strictEqual(await page.textContent('#sel-popup-add'), 'Save');
+  assert.strictEqual(await page.inputValue('#sel-popup-kw'), '4711');
   await page.keyboard.press('Escape');
-  assert.ok(await page.isHidden('#sel-popup'));
+  // Selecting an existing keyword edits it instead of adding a duplicate; no popup in de-anonymize mode.
   await selectInInput(page, 'Anna Berger');
+  assert.strictEqual(await page.textContent('#sel-popup-add'), 'Save');
   await page.click('#sel-popup-add');
   await wait(page, 100);
-  assert.ok((await page.textContent('#toast')).includes('already a keyword'));
+  assert.ok((await page.textContent('#toast')).includes('updated'));
   assert.strictEqual(await page.evaluate(() => activeWorkspace().rules.length), 5);
   await page.click('#mode-deanon');
   await page.fill('#io-in', 'PERSON_1 hello');
   await selectInInput(page, 'PERSON_1');
   assert.ok(await page.isHidden('#sel-popup'));
+});
+
+test('clicking a highlighted match opens the popup in edit mode', async (page) => {
+  // Demo 1 is active: "Anna Berger" -> PERSON_1, "Berlin" -> CITY_1 (whole word)
+  await clickInInput(page, 'Anna Berger');
+  assert.ok(await page.isVisible('#sel-popup'));
+  assert.strictEqual(await page.textContent('#sel-popup-add'), 'Save');
+  assert.strictEqual(await page.inputValue('#sel-popup-kw'), 'Anna Berger');
+  assert.strictEqual(await page.inputValue('#sel-popup-rp'), 'PERSON_1');
+  assert.ok(await page.isVisible('#sel-popup-del'));
+  assert.ok(await page.isVisible('#sel-popup-pt'), 'wildcard toggle always available when editing');
+  // Change the replacement and the keyword, save.
+  await page.fill('#sel-popup-rp', 'CUSTOMER_1');
+  await page.press('#sel-popup-rp', 'Enter');
+  await wait(page, 200);
+  assert.ok(await page.isHidden('#sel-popup'));
+  assert.ok((await page.inputValue('#io-out')).includes('CUSTOMER_1'));
+  const rule = await page.evaluate(() => activeWorkspace().rules.find((r) => r.keyword === 'Anna Berger'));
+  assert.strictEqual(rule.replacement, 'CUSTOMER_1');
+  // Turn a plain keyword into a wildcard rule and edit its pattern
+  // ("Acme GmbH" -> COMPANY_1 becomes "Acme %s" -> "Acme %s", still case-insensitive).
+  await clickInInput(page, 'Acme GmbH');
+  assert.strictEqual(await page.inputValue('#sel-popup-kw'), 'Acme GmbH');
+  await page.click('#sel-popup-pt');
+  await page.fill('#sel-popup-kw', 'Acme %s');
+  await page.fill('#sel-popup-rp', 'Acme %s');
+  await page.click('#sel-popup-add');
+  await wait(page, 200);
+  const rule2 = await page.evaluate(() => activeWorkspace().rules.find((r) => r.keyword === 'Acme %s'));
+  assert.strictEqual(rule2.pattern, true);
+  assert.strictEqual(rule2.caseInsensitive, true, 'other options are kept');
+  assert.ok(/at Acme [A-Z][a-z][a-z][A-Z] yesterday/.test(await page.inputValue('#io-out')), 'letter case kept per character: ' + await page.inputValue('#io-out'));
+  // A click outside any match shows nothing; a plain selection still adds.
+  await clickInInput(page, 'thanks');
+  assert.ok(await page.isHidden('#sel-popup'));
+  await selectInInput(page, 'thanks');
+  assert.strictEqual(await page.textContent('#sel-popup-add'), 'Anonymize');
+  await page.keyboard.press('Escape');
+  // Remove via the popup.
+  const before = await page.evaluate(() => activeWorkspace().rules.length);
+  await clickInInput(page, 'Berlin office');
+  assert.strictEqual(await page.inputValue('#sel-popup-kw'), 'Berlin');
+  await page.click('#sel-popup-del');
+  await wait(page, 200);
+  assert.strictEqual(await page.evaluate(() => activeWorkspace().rules.length), before - 1);
+  assert.ok(!(await page.inputValue('#io-out')).includes('CITY_1'));
 });
 
 // ---------- Dialogs, export/import ----------

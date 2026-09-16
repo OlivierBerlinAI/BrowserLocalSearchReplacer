@@ -73,6 +73,21 @@ async function selectInInput(page, needle) {
   await page.waitForTimeout(100);
 }
 
+// Click into the Original textarea at the first character of `needle` (a
+// caret, no selection); a click on a highlighted match opens the edit popup.
+async function clickInInput(page, needle) {
+  const text = await page.inputValue('#io-in');
+  const i = text.indexOf(needle);
+  if (i < 0) throw new Error('needle not in input: ' + needle);
+  await page.evaluate((s) => {
+    const t = document.getElementById('io-in');
+    t.focus();
+    t.setSelectionRange(s + 1, s + 1);
+    t.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  }, i);
+  await page.waitForTimeout(100);
+}
+
 async function run() {
   const launchOpts = { headless: true };
   if (process.env.BLSR_BROWSER_PATH) launchOpts.executablePath = process.env.BLSR_BROWSER_PATH;
@@ -101,4 +116,4 @@ async function run() {
   process.exit(failed ? 1 : 0);
 }
 
-module.exports = { test, run, selectInInput };
+module.exports = { test, run, selectInInput, clickInInput };

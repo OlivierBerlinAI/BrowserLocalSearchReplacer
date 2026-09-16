@@ -18,6 +18,7 @@
     <symbol id="mdi-seed" viewBox="0 0 24 24"><path d="M20.7,3.3C20.7,3.3 19.3,3 17.2,3C11.7,3 1.6,5.1 3.2,20.8C4.3,20.9 5.4,21 6.4,21C24.3,21 20.7,3.3 20.7,3.3M7,17C7,17 7,7 17,7C17,7 11,9 7,17Z"/></symbol>
     <symbol id="mdi-help-circle-outline" viewBox="0 0 24 24"><path d="M11,18H13V16H11V18M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z"/></symbol>
     <symbol id="mdi-pencil-outline" viewBox="0 0 24 24"><path d="M14.06,9L15,9.94L5.92,19H5V18.08L14.06,9M17.66,3C17.41,3 17.15,3.1 16.96,3.29L15.13,5.12L18.88,8.87L20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18.17,3.09 17.92,3 17.66,3M14.06,6.19L3,17.25V21H6.75L17.81,9.94L14.06,6.19Z"/></symbol>
+    <symbol id="mdi-delete-outline" viewBox="0 0 24 24"><path d="M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19M8,9H16V19H8V9M15.5,4L14.5,3H9.5L8.5,4H5V6H19V4H15.5Z"/></symbol>
     <symbol id="mdi-close" viewBox="0 0 24 24"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></symbol>
   </svg>
   <aside class="sidebar">
@@ -152,11 +153,12 @@
               <textarea id="io-in" placeholder="Paste text here…" spellcheck="false"></textarea>
               <div id="io-measure" class="io-highlights io-measure" aria-hidden="true"></div>
               <div id="sel-popup" class="sel-popup" hidden>
-                <span id="sel-popup-kw" class="sel-popup-kw"></span>
+                <input id="sel-popup-kw" class="sel-popup-kw" type="text" placeholder="Keyword" spellcheck="false" title="Keyword (or pattern)">
                 <span class="arrow">→</span>
                 <input id="sel-popup-rp" type="text" placeholder="Replace with" spellcheck="false">
                 <button id="sel-popup-pt" class="pill-opt sel-popup-pt" type="button" title="Wildcard rule"><svg class="icon"><use href="#mdi-regex"/></svg></button>
                 <button id="sel-popup-add" class="btn btn-primary" title="Add this selection as a keyword (Enter)">Anonymize</button>
+                <button id="sel-popup-del" class="btn btn-icon sel-popup-del" title="Remove this keyword" hidden><svg class="icon"><use href="#mdi-delete-outline"/></svg></button>
                 <button id="sel-popup-close" class="btn btn-icon" title="Close (Esc)"><svg class="icon"><use href="#mdi-close"/></svg></button>
               </div>
             </div>
@@ -182,7 +184,7 @@
       <h3>Rules</h3>
       <p>Each rule replaces a <em>keyword</em> in the original text by its <em>replacement</em>. All rules are applied in one pass, so the output of one rule is never re-processed by another. <em>De-anonymize</em> runs the rules backwards (replacement → keyword) and uses the recorded wildcard mappings.</p>
 
-      <p><strong>Quick add:</strong> select a word or phrase in the <em>Original</em> text and a small popup appears under the selection. Words and names get a plain replacement (<code>ANON_1</code>, <code>ANON_2</code>, …). Values with a recognizable shape get a wildcard suggestion instead: <code>21.0</code> → <code>%d</code>, <code>4711</code> → <code>%i</code>, <code>BB12345678</code> → <code>BB%i</code>, <code>192.168.1.7</code> → <code>%i.%i.%i.%i</code>, <code>3fa9c0de</code> → <code>%x</code>, <code>anna@example.com</code> → <code>%s@%s.%s</code>. The <svg class="icon"><use href="#mdi-regex"/></svg> button in the popup switches between the wildcard rule (matches every value of that shape) and a plain keyword (matches exactly this text). Press Enter or <em>Anonymize</em> to add it.</p>
+      <p><strong>Quick add:</strong> select a word or phrase in the <em>Original</em> text and a small popup appears under the selection. Words and names get a plain replacement (<code>ANON_1</code>, <code>ANON_2</code>, …). Values with a recognizable shape get a wildcard suggestion instead: <code>21.0</code> → <code>%d</code>, <code>4711</code> → <code>%i</code>, <code>BB12345678</code> → <code>BB%i</code>, <code>192.168.1.7</code> → <code>%i.%i.%i.%i</code>, <code>3fa9c0de</code> → <code>%x</code>, <code>anna@example.com</code> → <code>%s@%s.%s</code>. The <svg class="icon"><use href="#mdi-regex"/></svg> button in the popup switches between the wildcard rule (matches every value of that shape) and a plain keyword (matches exactly this text). Press Enter or <em>Anonymize</em> to add it. Clicking on a highlighted (already matched) part of the text opens the same popup for the rule behind it: change keyword or pattern, replacement or the wildcard switch and press <em>Save</em>, or remove the rule with the bin icon.</p>
 
       <h3>Wildcards</h3>
       <p>Turn on <svg class="icon"><use href="#mdi-regex"/></svg> <em>Wildcards</em> for a rule and keyword and replacement become templates. Every value matched by a wildcard is replaced by a random value of the <strong>same shape</strong>: same length, same number of decimals, same letter case, never equal to the input.</p>

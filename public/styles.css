@@ -515,17 +515,14 @@ body {
   box-shadow: 0 6px 20px rgba(0,0,0,0.18);
   max-width: calc(100% - 8px);
 }
-.sel-popup-kw {
-  font-family: var(--mono);
-  font-size: 12px;
+.sel-popup input.sel-popup-kw {
+  width: 170px;
   background: var(--hl-in);
-  border-radius: 3px;
-  padding: 2px 5px;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  border-color: transparent;
 }
+.sel-popup input.sel-popup-kw:focus { border-color: var(--primary); }
+.sel-popup-del:hover { color: var(--danger); }
+.sel-popup.editing { border-color: var(--primary); }
 .sel-popup .arrow { color: var(--muted); }
 .sel-popup input[type="text"] {
   width: 130px;

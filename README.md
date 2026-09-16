@@ -142,7 +142,9 @@ nginx pass upstream headers through by default; do not override them with
    (`21.0` → `%d`, `4711` → `%i`, `BB12345678` → `BB%i`, `192.168.1.7` →
    `%i.%i.%i.%i`, `3fa9c0de` → `%x`, `anna@example.com` → `%s@%s.%s`), added
    as an example → template rule; the wildcard button in the popup switches
-   to a plain keyword instead. Only in Anonymize mode,
+   to a plain keyword instead. Clicking on a highlighted match opens the same
+   popup in edit mode for the rule behind it (keyword/pattern, replacement,
+   wildcard switch, *Save*, or remove the rule). Only in Anonymize mode,
    single-line selections up to 200 characters; existing keywords are not
    added twice.
    *Help* (in the Keywords header) opens a dialog with all wildcards, both ways

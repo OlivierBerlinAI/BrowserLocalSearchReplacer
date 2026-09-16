@@ -1034,22 +1034,35 @@ function clearMappings() {
 // marker span is measured there.
 const selPopup = {
   el: null,
-  text: '',
+  text: '',       // selected text (add mode)
+  rule: null,     // the existing rule being edited (edit mode), else null
   template: null, // wildcard template suggested for the selection, if any
-  pattern: false, // whether the rule will be added as a wildcard rule
+  pattern: false, // whether the rule is / will be a wildcard rule
   hide() { if (this.el && !this.el.hidden) this.el.hidden = true; },
 };
 
-// Reflect the wildcard toggle: replacement field shows the template or a literal name.
+// Reflect mode and wildcard toggle. In add mode the replacement field shows the
+// suggested template or a literal name; in edit mode it holds the rule's own text.
 function renderSelPopupMode() {
   const ws = activeWorkspace();
+  const editing = !!selPopup.rule;
   const btn = $('#sel-popup-pt');
   btn.classList.toggle('on', selPopup.pattern);
-  btn.hidden = !selPopup.template;
-  btn.title = selPopup.pattern
-    ? 'Wildcard rule: matches every value of this shape (' + selPopup.template + '). Click for a plain keyword.'
-    : 'Plain keyword: matches exactly this text. Click for a wildcard rule (' + selPopup.template + ').';
-  $('#sel-popup-rp').value = selPopup.pattern ? selPopup.template : nextAutoReplacement(ws);
+  btn.hidden = !editing && !selPopup.template;
+  if (editing) {
+    btn.title = selPopup.pattern
+      ? 'Wildcard rule: keyword and replacement are templates. Click for a plain keyword.'
+      : 'Plain keyword: matches exactly this text. Click for a wildcard rule.';
+  } else {
+    btn.title = selPopup.pattern
+      ? 'Wildcard rule: matches every value of this shape (' + selPopup.template + '). Click for a plain keyword.'
+      : 'Plain keyword: matches exactly this text. Click for a wildcard rule (' + selPopup.template + ').';
+    $('#sel-popup-rp').value = selPopup.pattern ? selPopup.template : nextAutoReplacement(ws);
+  }
+  $('#sel-popup-add').textContent = editing ? 'Save' : 'Anonymize';
+  $('#sel-popup-add').title = editing ? 'Save the changes to this keyword (Enter)' : 'Add this selection as a keyword (Enter)';
+  $('#sel-popup-del').hidden = !editing;
+  $('#sel-popup').classList.toggle('editing', editing);
 }
 
 function selectionCoords(ta, index) {
@@ -1070,27 +1083,63 @@ function nextAutoReplacement(ws) {
   return 'ANON_' + (n + 1);
 }
 
+// The rule whose match contains the caret (click, no selection) or is exactly
+// the selection. A selection that only overlaps a match is treated as new text.
+function ruleAtRange(ws, text, start, end) {
+  const { regex, entries } = Replacer.compile(ws.rules, engineOpts(ws));
+  if (!regex) return null;
+  regex.lastIndex = 0;
+  let m;
+  while ((m = regex.exec(text)) !== null) {
+    if (m[0].length === 0) { regex.lastIndex++; continue; }
+    const ms = m.index;
+    const me = ms + m[0].length;
+    if (ms > end) break;
+    const hit = start === end ? start >= ms && start < me : start === ms && end === me;
+    if (!hit) continue;
+    const e = entries.find((x) => m[x.start + 1] !== undefined);
+    return e && e.ruleIndex >= 0 ? { rule: ws.rules[e.ruleIndex], start: ms, end: me } : null;
+  }
+  return null;
+}
+
 function showSelPopup() {
   const ta = $('#io-in');
   const ws = activeWorkspace();
   if (!ws || !isAnon() || document.activeElement !== ta) { selPopup.hide(); return; }
   const start = ta.selectionStart;
   const end = ta.selectionEnd;
-  const raw = ta.value.slice(start, end);
-  const text = raw.trim();
-  if (!text || text.includes('\n') || text.length > 200) { selPopup.hide(); return; }
   const pop = $('#sel-popup');
   selPopup.el = pop;
-  if (pop.hidden || selPopup.text !== text) {
-    selPopup.text = text;
-    $('#sel-popup-kw').textContent = text;
-    // Numbers, ids, IPs, e-mails etc. get a wildcard suggestion; words stay literal.
-    selPopup.template = Replacer.suggestTemplate(text);
-    selPopup.pattern = !!selPopup.template;
-    renderSelPopupMode();
+  const hit = ruleAtRange(ws, ta.value, start, end);
+  let anchor = end;
+  if (hit) {
+    // Click on a highlighted match: edit that rule.
+    anchor = hit.end;
+    if (pop.hidden || selPopup.rule !== hit.rule) {
+      selPopup.rule = hit.rule;
+      selPopup.text = '';
+      selPopup.template = null;
+      selPopup.pattern = !!hit.rule.pattern;
+      $('#sel-popup-kw').value = hit.rule.keyword;
+      $('#sel-popup-rp').value = hit.rule.replacement;
+      renderSelPopupMode();
+    }
+  } else {
+    const text = ta.value.slice(start, end).trim();
+    if (!text || text.includes('\n') || text.length > 200) { selPopup.hide(); return; }
+    if (pop.hidden || selPopup.rule || selPopup.text !== text) {
+      selPopup.rule = null;
+      selPopup.text = text;
+      $('#sel-popup-kw').value = text;
+      // Numbers, ids, IPs, e-mails etc. get a wildcard suggestion; words stay literal.
+      selPopup.template = Replacer.suggestTemplate(text);
+      selPopup.pattern = !!selPopup.template;
+      renderSelPopupMode();
+    }
   }
-  // Place it under the end of the selection, kept inside the field.
-  const c = selectionCoords(ta, end);
+  // Place it under the end of the match/selection, kept inside the field.
+  const c = selectionCoords(ta, anchor);
   pop.hidden = false;
   const field = ta.parentElement;
   const maxLeft = Math.max(0, field.clientWidth - pop.offsetWidth - 4);
@@ -1100,27 +1149,50 @@ function showSelPopup() {
   pop.style.top = top + 'px';
 }
 
-function addSelectedKeyword() {
-  const ws = activeWorkspace();
-  const keyword = selPopup.text;
-  if (!ws || !keyword) return;
-  const replacement = $('#sel-popup-rp').value;
-  const pattern = selPopup.pattern && !!selPopup.template;
-  const duplicate = ws.rules.find((r) => r.keyword === keyword && (!pattern || (r.pattern && r.replacement === replacement)))
-    || (pattern && ws.rules.find((r) => r.pattern && Replacer.describeRule(r).matches === Replacer.describeRule({ keyword, replacement, pattern }).matches));
-  if (duplicate) {
-    toast(pattern ? `A wildcard rule for this shape already exists.` : `"${keyword}" is already a keyword.`);
-    selPopup.hide();
-    return;
-  }
-  ws.rules.push(normalizeRule({ keyword, replacement, pattern }));
+function finishSelPopup(msg) {
   selPopup.hide();
   saveState();
   renderRules();
   renderSidebar();
   applyRulesHeight();
   liveRun();
-  toast(pattern ? `Wildcard rule added: matches ${Replacer.describeRule({ keyword, replacement, pattern }).matches}` : `Keyword "${keyword}" added.`);
+  if (msg) toast(msg);
+  $('#io-in').focus();
+}
+
+// Add mode: create a rule from the selection. Edit mode: save the changes.
+function submitSelPopup() {
+  const ws = activeWorkspace();
+  if (!ws) return;
+  const keyword = $('#sel-popup-kw').value;
+  const replacement = $('#sel-popup-rp').value;
+  if (keyword.trim() === '') { toast('Keyword must not be empty.'); $('#sel-popup-kw').focus(); return; }
+  if (selPopup.rule) {
+    const rule = selPopup.rule;
+    if (!ws.rules.includes(rule)) { selPopup.hide(); return; }
+    Object.assign(rule, { keyword, replacement, pattern: selPopup.pattern });
+    if (!rule.pattern) rule.seedIncludesText = false;
+    finishSelPopup('Keyword updated.');
+    return;
+  }
+  const pattern = selPopup.pattern;
+  const duplicate = ws.rules.find((r) => r.keyword === keyword && (!pattern || (r.pattern && r.replacement === replacement)))
+    || (pattern && ws.rules.find((r) => r.pattern && Replacer.describeRule(r).matches === Replacer.describeRule({ keyword, replacement, pattern }).matches));
+  if (duplicate) {
+    toast(pattern ? 'A wildcard rule for this shape already exists.' : `"${keyword}" is already a keyword.`);
+    selPopup.hide();
+    return;
+  }
+  ws.rules.push(normalizeRule({ keyword, replacement, pattern }));
+  finishSelPopup(pattern ? `Wildcard rule added: matches ${Replacer.describeRule({ keyword, replacement, pattern }).matches}` : `Keyword "${keyword}" added.`);
+}
+
+function deleteSelPopupRule() {
+  const rule = selPopup.rule;
+  if (!rule) return;
+  selPopup.hide();
+  deleteRule(rule.id);
+  toast('Keyword removed.');
   $('#io-in').focus();
 }
 
@@ -1513,11 +1585,14 @@ $('#live-update').addEventListener('change', (e) => setLiveUpdate(e.target.check
     if (!pop.hidden && !pop.contains(e.target) && e.target !== ta) selPopup.hide();
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) { selPopup.hide(); ta.focus(); } });
-  $('#sel-popup-add').addEventListener('click', addSelectedKeyword);
+  $('#sel-popup-add').addEventListener('click', submitSelPopup);
+  $('#sel-popup-del').addEventListener('click', deleteSelPopupRule);
   $('#sel-popup-pt').addEventListener('click', () => { selPopup.pattern = !selPopup.pattern; renderSelPopupMode(); $('#sel-popup-rp').focus(); });
   $('#sel-popup-close').addEventListener('click', () => { selPopup.hide(); ta.focus(); });
-  $('#sel-popup-rp').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addSelectedKeyword(); } });
-  $('#sel-popup-rp').addEventListener('keydown', overwriteKeydown);
+  for (const id of ['#sel-popup-kw', '#sel-popup-rp']) {
+    $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitSelPopup(); } });
+    $(id).addEventListener('keydown', overwriteKeydown);
+  }
 }
 $('#ws-persist-texts').addEventListener('change', (e) => setPersistTexts(e.target.checked));
 window.addEventListener('pagehide', () => { flushPersist(); commitMappings(); });
