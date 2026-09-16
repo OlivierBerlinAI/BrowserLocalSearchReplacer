@@ -124,10 +124,12 @@ body {
 .sidebar-footer .btn:hover { background: rgba(255,255,255,0.14); }
 .sidebar-footer .btn-danger { color: #fca5a5; }
 .sidebar-footer .hint { color: rgba(255,255,255,0.5); }
-.link-btn-light { color: #93c5fd; }
+/* Links in the dark sidebar footer: one light blue, always underlined. */
+.sidebar-footer .link-btn-light,
+.sidebar-footer .legal-links a { color: #93c5fd; text-decoration: underline; }
+.sidebar-footer .link-btn-light:hover,
+.sidebar-footer .legal-links a:hover { color: #bfdbfe; }
 .legal-links { margin-top: 4px; }
-.legal-links a { color: #93c5fd; text-decoration: underline; }
-.legal-links a:hover { color: #bfdbfe; }
 .help-body .hint a { color: var(--primary); }
 
 /* ---------- Main ---------- */

@@ -16,6 +16,8 @@ test('loads with three demo workspaces and no external requests', async (page, u
   const external = page.requests.filter((u) => !u.startsWith(url));
   assert.deepStrictEqual(external, []);
   assert.ok(await page.evaluate(() => document.querySelectorAll('.btn-icon .icon use').length > 0), 'icons rendered');
+  const colors = await page.evaluate(() => ['#btn-privacy', '.legal-links a:nth-child(1)', '.legal-links a:nth-child(2)'].map((s) => getComputedStyle(document.querySelector(s)).color + '/' + getComputedStyle(document.querySelector(s)).textDecorationLine));
+  assert.deepStrictEqual(colors, ['rgb(147, 197, 253)/underline', 'rgb(147, 197, 253)/underline', 'rgb(147, 197, 253)/underline'], 'all footer links share one style');
   const legal = await page.locator('.sidebar-footer .legal-links a').evaluateAll((as) => as.map((a) => a.textContent + '=' + a.href + '|' + a.target + '|' + a.rel));
   assert.deepStrictEqual(legal, [
     'Imprint=https://olivier.berlin/imprint/|_blank|noopener',
