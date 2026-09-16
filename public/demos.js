@@ -19,8 +19,8 @@
         persistTexts: true,
         seed: 'demo1-basics-seed',
         rules: [
-          { keyword: 'Anna Berger', replacement: 'PERSON_1', wholeWord: true },
           { keyword: 'Anna', replacement: 'PERSON_1_FIRSTNAME', wholeWord: true },
+          { keyword: 'Anna Berger', replacement: 'PERSON_1', wholeWord: true },
           { keyword: 'Acme GmbH', replacement: 'COMPANY_1', caseInsensitive: true },
           { keyword: 'Berlin', replacement: 'CITY_1', wholeWord: true },
         ],
@@ -38,7 +38,7 @@
           },
         },
         help: [
-          'Plain keywords. "Longest keyword first" (header) makes "Anna Berger" win over "Anna".',
+          'Plain keywords. "Longest keyword first" (header) makes "Anna Berger" win over "Anna" although "Anna" is listed first; untick it and the result becomes "PERSON_1_FIRSTNAME Berger".',
           '"Whole word" keeps "Berlin" from matching inside "Berliner"; "Case-insensitive" catches "ACME GMBH" (restored as "Acme GmbH", the keyword\'s spelling).',
           'Switch to De-anonymize and paste the result to get the original back.',
         ],
