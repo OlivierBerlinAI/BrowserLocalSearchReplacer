@@ -1,0 +1,30 @@
+# Alternative: app + Caddy as HTTPS reverse proxy with automatic Let's Encrypt
+# certificates, for a server without its own web server.
+# Usage (from the repo root):
+#   DOMAIN=anon.example.com docker compose -f deploy/docker-compose.caddy.yml up -d
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN to your hostname, e.g. anon.example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:

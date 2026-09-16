@@ -1,28 +1,10 @@
-# App + Caddy as HTTPS reverse proxy with automatic Let's Encrypt certificates.
-# Usage: DOMAIN=anon.example.com docker compose up -d
+# App only, for a host that already runs nginx (or another proxy) with HTTPS.
+# The container serves plain HTTP on 127.0.0.1:${PORT:-8080}; nginx terminates
+# TLS and proxies to it (see deploy/nginx.conf). Not reachable from outside.
+# Usage: docker compose up -d      (PORT=8090 docker compose up -d for another port)
 services:
   app:
     build: .
     restart: unless-stopped
-    expose:
-      - "8080"
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    environment:
-      DOMAIN: ${DOMAIN:?set DOMAIN to your hostname, e.g. anon.example.com}
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - app
-
-volumes:
-  caddy_data:
-  caddy_config:
+      - "127.0.0.1:${PORT:-8080}:8080"

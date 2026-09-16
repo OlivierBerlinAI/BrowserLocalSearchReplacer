@@ -65,20 +65,26 @@ Put HTTPS in front of it: without it, the JavaScript can be tampered with on
 the way to the user, and the browser's Web Crypto API (needed for future
 encryption features) is only available on HTTPS or localhost.
 
-**Docker + Caddy (automatic Let's Encrypt certificates):**
+**Docker behind your own nginx (recommended if the host already runs nginx
+with Let's Encrypt):**
 
 ```bash
-DOMAIN=anon.example.com docker compose up -d
+docker compose up -d            # container listens on 127.0.0.1:8080 (PORT=8090 to change)
 ```
 
-`docker-compose.yml` builds the app image (`Dockerfile`, Node 22 Alpine,
-runs as the unprivileged `node` user, health check) and starts Caddy with
-`deploy/Caddyfile`, which proxies to the app and adds HSTS. Ports 80/443 must
-be reachable and the DNS record must point at the server.
+`docker-compose.yml` builds the app image (`Dockerfile`, Node 22 Alpine, runs
+as the unprivileged `node` user, health check) and publishes it only on
+localhost. Add the server block from `deploy/nginx.conf` to your nginx
+(`proxy_pass http://127.0.0.1:8080`), run certbot for the domain, reload.
 
-**Without Docker (systemd + Caddy or nginx on the host):**
+**Docker + Caddy (server without its own web server):**
+`deploy/docker-compose.caddy.yml` starts the app together with Caddy, which
+obtains Let's Encrypt certificates itself:
+`DOMAIN=anon.example.com docker compose -f deploy/docker-compose.caddy.yml up -d`.
+
+**Without Docker (systemd + nginx or Caddy on the host):**
 `deploy/blsr.service` runs `server.js` as a dedicated user on `127.0.0.1:8080`
-with systemd hardening; `deploy/Caddyfile.host` or `deploy/nginx.conf` provide
+with systemd hardening; `deploy/nginx.conf` or `deploy/Caddyfile.host` provide
 the HTTPS front. Install steps are in the comments of each file.
 
 After deploying, open the site, then in the browser's developer tools check
@@ -221,5 +227,5 @@ public/app.js        UI logic + localStorage persistence
 public/favicon.svg   tab icon
 test/replacer.test.js  engine unit tests
 test/ui/             browser tests (Playwright harness + tests)
-Dockerfile, docker-compose.yml, deploy/  deployment (Docker+Caddy, systemd, nginx)
+Dockerfile, docker-compose.yml, deploy/  deployment (Docker behind nginx, Caddy variant, systemd)
 ```
