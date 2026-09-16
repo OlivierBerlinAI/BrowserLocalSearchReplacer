@@ -61,7 +61,10 @@ every push.
 
 ## Deployment
 
-The server is stateless and only reads `public/`, so any static host works.
+The public instance is planned at **https://dont-tell.olivier.berlin/** (read
+as a sentence: nothing you type is told to Olivier, just as the anonymized
+text tells an LLM nothing it should not know). The server is stateless and
+only reads `public/`, so any static host works.
 Put HTTPS in front of it: without it, the JavaScript can be tampered with on
 the way to the user, and the browser's Web Crypto API (needed for future
 encryption features) is only available on HTTPS or localhost.
@@ -81,7 +84,7 @@ localhost. Add the server block from `deploy/nginx.conf` to your nginx
 **Docker + Caddy (server without its own web server):**
 `deploy/docker-compose.caddy.yml` starts the app together with Caddy, which
 obtains Let's Encrypt certificates itself:
-`DOMAIN=anon.example.com docker compose -f deploy/docker-compose.caddy.yml up -d`.
+`DOMAIN=dont-tell.olivier.berlin docker compose -f deploy/docker-compose.caddy.yml up -d`.
 
 **Without Docker (systemd + nginx or Caddy on the host):**
 `deploy/blsr.service` runs `server.js` as a dedicated user on `127.0.0.1:8080`
