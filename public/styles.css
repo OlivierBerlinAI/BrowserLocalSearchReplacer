@@ -125,6 +125,10 @@ body {
 .sidebar-footer .btn-danger { color: #fca5a5; }
 .sidebar-footer .hint { color: rgba(255,255,255,0.5); }
 .link-btn-light { color: #93c5fd; }
+.legal-links { margin-top: 4px; }
+.legal-links a { color: rgba(255,255,255,0.6); text-decoration: none; }
+.legal-links a:hover { color: #93c5fd; text-decoration: underline; }
+.help-body .hint a { color: var(--primary); }
 
 /* ---------- Main ---------- */
 .main {
