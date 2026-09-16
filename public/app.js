@@ -1391,7 +1391,7 @@ function applyImport() {
 
 function resetAll() {
   if (!confirm('Delete ALL workspaces and keywords stored in this browser? This cannot be undone.')) return;
-  state = defaultState();
+  state = normalizeState(null); // empty state plus the demo workspaces
   ioBuffers.clear();
   clearTimeout(persistTimer);
   persistTimer = null;
@@ -1402,7 +1402,7 @@ function resetAll() {
   lastHits = new Map();
   localStorage.removeItem(STORAGE_KEY);
   renderAll();
-  toast('All data cleared.');
+  toast('All data cleared. Demo workspaces restored.');
 }
 
 // ---------- Wire up ----------

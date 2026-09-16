@@ -577,6 +577,8 @@ body {
 .btn:hover { background: #eef1f5; }
 .btn-primary { background: var(--primary); color: var(--primary-text); border-color: var(--primary); }
 .btn-primary:hover { background: #1d4ed8; }
+.btn:disabled, .btn:disabled:hover { opacity: 0.45; cursor: not-allowed; background: var(--panel); color: var(--muted); border-color: var(--border); }
+.btn-primary:disabled, .btn-primary:disabled:hover { background: var(--primary); color: var(--primary-text); border-color: var(--primary); }
 .btn-danger { color: var(--danger); }
 .btn-danger:hover { background: #fee2e2; }
 .btn-icon { padding: 4px 8px; border: none; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; display: inline-flex; align-items: center; }

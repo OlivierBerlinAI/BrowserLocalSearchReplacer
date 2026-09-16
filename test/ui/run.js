@@ -77,6 +77,21 @@ test('hiding and restoring demo workspaces', async (page) => {
   assert.ok(await page.isHidden('#btn-restore-demos'));
 });
 
+test('reset all brings the demo workspaces back', async (page) => {
+  await page.click('#btn-delete-workspace'); // hide demo 1
+  await page.click('#btn-add-workspace');
+  await wait(page, 200);
+  await page.click('#btn-reset'); // confirm dialog is auto-accepted
+  await wait(page, 200);
+  const names = await page.locator('#workspace-list li .ws-list-name').allTextContents();
+  assert.deepStrictEqual(names, ['Demo 1 – Basics', 'Demo 2 – Wildcards (JSON)', 'Demo 3 – Log file']);
+  assert.strictEqual(await page.inputValue('#ws-name'), 'Demo 1 – Basics');
+  assert.ok((await page.inputValue('#io-out')).startsWith('Hi PERSON_1_FIRSTNAME,'), 'demo text and result are shown again');
+  await page.reload();
+  await wait(page, 200);
+  assert.strictEqual((await page.locator('#workspace-list li').count()), 3);
+});
+
 test('existing state without demos gets them appended, active workspace kept', async (page) => {
   await wait(page, 500); // let the demo's delayed text persistence finish before replacing the state
   await page.evaluate(() => localStorage.setItem('blsr.state.v1', JSON.stringify({ version: 1, workspaces: [{ id: 'mine', name: 'Mine', rules: [] }], activeWorkspaceId: 'mine' })));
@@ -290,8 +305,13 @@ test('export dialog: select all / subset; file has seed and mappings', async (pa
   assert.strictEqual(await boxes.count(), 3);
   assert.deepStrictEqual(await boxes.evaluateAll((bs) => bs.map((b) => b.checked)), [false, true, false], 'active workspace preselected');
   assert.strictEqual(await page.textContent('#export-confirm'), 'Export 1 workspace');
+  await boxes.nth(1).uncheck();
+  assert.deepStrictEqual(await boxes.evaluateAll((bs) => bs.map((b) => b.checked)), [false, false, false]);
+  assert.ok(await page.isDisabled('#export-confirm'), 'nothing selected -> button disabled');
+  assert.strictEqual(await page.evaluate(() => getComputedStyle(document.getElementById('export-confirm')).opacity), '0.45');
   await page.check('#export-all');
   assert.deepStrictEqual(await boxes.evaluateAll((bs) => bs.map((b) => b.checked)), [true, true, true]);
+  assert.ok(await page.isEnabled('#export-confirm'));
   await boxes.nth(0).uncheck();
   assert.ok(await page.evaluate(() => document.getElementById('export-all').indeterminate));
   assert.strictEqual(await page.textContent('#export-confirm'), 'Export 2 workspaces');
