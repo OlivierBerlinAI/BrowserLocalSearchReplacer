@@ -126,8 +126,8 @@ body {
 .sidebar-footer .hint { color: rgba(255,255,255,0.5); }
 .link-btn-light { color: #93c5fd; }
 .legal-links { margin-top: 4px; }
-.legal-links a { color: #93c5fd; text-decoration: none; }
-.legal-links a:hover { text-decoration: underline; }
+.legal-links a { color: #93c5fd; text-decoration: underline; }
+.legal-links a:hover { color: #bfdbfe; }
 .help-body .hint a { color: var(--primary); }
 
 /* ---------- Main ---------- */
@@ -173,6 +173,10 @@ body {
   min-width: 200px;
   color: var(--text);
 }
+.ws-name-wrap { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 200px; cursor: text; }
+.ws-name-wrap .ws-name { flex: 1; min-width: 0; }
+.ws-name-pencil { color: var(--muted); opacity: 0.5; flex: none; }
+.ws-name-wrap:hover .ws-name-pencil, .ws-name-wrap:focus-within .ws-name-pencil { opacity: 1; color: var(--primary); }
 .ws-name:hover { border-color: var(--border); }
 .ws-name:focus { border-color: var(--primary); outline: none; background: var(--panel); }
 
@@ -633,6 +637,20 @@ body.overwrite .rules-table input[type="text"]:focus { caret-shape: block; }
 .help-compact { width: min(680px, calc(100vw - 32px)); }
 .help-compact ul { margin: 4px 0; padding-left: 20px; }
 .help-compact li { margin: 4px 0; }
+
+/* ---------- Export / import dialogs ---------- */
+.pick-all { font-weight: 600; margin: 8px 0 4px; }
+.pick-list { list-style: none; margin: 0 0 8px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); max-height: 320px; overflow-y: auto; }
+.pick-list li { border-bottom: 1px solid var(--border); }
+.pick-list li:last-child { border-bottom: none; }
+.pick-list label { display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: pointer; }
+.pick-list label:hover { background: #f6f7f9; }
+.pick-list .count { margin-left: auto; }
+.pick-list .demo-badge { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; }
+.dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.import-table select { font: inherit; font-size: 13px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+.import-table .status-new { color: #047857; }
+.import-table .status-exists { color: #b45309; }
 
 /* ---------- Toast ---------- */
 .toast {

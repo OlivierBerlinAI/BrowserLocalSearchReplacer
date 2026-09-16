@@ -1192,17 +1192,69 @@ function setupSync(a, b) {
   ro.observe(b);
 }
 
+// ---------- Export: pick workspaces ----------
+function openExportDialog() {
+  const list = $('#export-list');
+  list.innerHTML = '';
+  for (const ws of visibleWorkspaces()) {
+    const li = document.createElement('li');
+    const label = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = ws.id;
+    cb.checked = ws.id === state.activeWorkspaceId;
+    cb.addEventListener('change', updateExportAll);
+    const name = document.createElement('span');
+    name.textContent = ws.name || 'Untitled';
+    label.append(cb, name);
+    if (ws.demo) {
+      const badge = document.createElement('span');
+      badge.className = 'demo-badge';
+      badge.textContent = 'demo';
+      label.appendChild(badge);
+    }
+    const count = document.createElement('span');
+    count.className = 'count';
+    count.textContent = `${ws.rules.length} keyword${ws.rules.length === 1 ? '' : 's'}`;
+    label.appendChild(count);
+    li.appendChild(label);
+    list.appendChild(li);
+  }
+  updateExportAll();
+  openDialog('#export-dialog');
+}
+
+function exportChecked() {
+  return Array.from($('#export-list').querySelectorAll('input[type="checkbox"]'));
+}
+
+function updateExportAll() {
+  const boxes = exportChecked();
+  const on = boxes.filter((b) => b.checked).length;
+  const all = $('#export-all');
+  all.checked = on > 0 && on === boxes.length;
+  all.indeterminate = on > 0 && on < boxes.length;
+  $('#export-confirm').disabled = on === 0;
+  $('#export-confirm').textContent = on === 0 ? 'Export selected' : `Export ${on} workspace${on === 1 ? '' : 's'}`;
+}
+
 function exportJson() {
-  const blob = new Blob([JSON.stringify({ version: Migrations.SCHEMA_VERSION, workspaces: visibleWorkspaces() }, null, 2)], { type: 'application/json' });
+  const ids = new Set(exportChecked().filter((b) => b.checked).map((b) => b.value));
+  const selected = visibleWorkspaces().filter((w) => ids.has(w.id));
+  if (selected.length === 0) { toast('Select at least one workspace.'); return; }
+  const blob = new Blob([JSON.stringify({ version: Migrations.SCHEMA_VERSION, workspaces: selected }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const base = selected.length === 1 ? (selected[0].name || 'workspace').replace(/[^\w.-]+/g, '_').slice(0, 40) : 'workspaces';
   a.href = url;
-  a.download = `workspaces-${stamp}.json`;
+  a.download = `${base}-${stamp}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  $('#export-dialog').close();
+  toast(`Exported ${selected.length} workspace${selected.length === 1 ? '' : 's'}.`);
 }
 
 function importJson(file) {
@@ -1220,25 +1272,121 @@ function importJson(file) {
       return;
     }
     const migrated = Migrations.migrate(parsed);
-    const incoming = migrated.data.workspaces;
     for (const w of migrated.warnings) toast(w);
-    const existingIds = new Set(state.workspaces.map((w) => w.id));
-    let added = 0;
-    for (const raw of incoming) {
-      // Imported copies of demo workspaces become ordinary workspaces.
-      const ws = normalizeWorkspace(Object.assign({}, raw, { demo: false, hidden: false, help: undefined }));
-      if (existingIds.has(ws.id)) ws.id = uid(); // never overwrite existing workspaces
-      ws.rules.forEach((r) => { r.id = uid(); });
-      state.workspaces.push(ws);
-      added++;
-    }
-    if (added && !activeWorkspace()) state.activeWorkspaceId = visibleWorkspaces()[0].id;
-    saveState();
-    renderAll();
-    toast(`Imported ${added} workspace${added === 1 ? '' : 's'}.`);
+    // Imported copies of demo workspaces become ordinary workspaces.
+    const incoming = migrated.data.workspaces.map((raw) => normalizeWorkspace(Object.assign({}, raw, { demo: false, hidden: false, help: undefined })));
+    if (incoming.length === 0) { toast('The file contains no workspaces.'); return; }
+    openImportDialog(incoming);
   };
   reader.onerror = () => toast('Import failed: could not read file.');
   reader.readAsText(file);
+}
+
+// ---------- Import: resolve conflicts ----------
+// An incoming workspace "exists" when a stored workspace (hidden demos included)
+// has the same id or the same name.
+function findExisting(ws) {
+  const name = (ws.name || '').trim();
+  return state.workspaces.find((w) => w.id === ws.id) || state.workspaces.find((w) => (w.name || '').trim() === name) || null;
+}
+
+function uniqueName(base) {
+  const names = new Set(state.workspaces.map((w) => (w.name || '').trim()));
+  const clean = (base || 'Untitled').replace(/ \((\d+)\)$/, '');
+  if (!names.has(clean)) return clean;
+  let n = 2;
+  while (names.has(`${clean} (${n})`)) n++;
+  return `${clean} (${n})`;
+}
+
+let pendingImport = [];
+
+function openImportDialog(incoming) {
+  pendingImport = incoming;
+  const tbody = $('#import-list');
+  tbody.innerHTML = '';
+  let conflicts = 0;
+  incoming.forEach((ws, i) => {
+    const existing = findExisting(ws);
+    const tr = document.createElement('tr');
+    tr.dataset.index = String(i);
+    const name = document.createElement('td');
+    name.textContent = ws.name || 'Untitled';
+    const count = document.createElement('td');
+    count.textContent = String(ws.rules.length);
+    const status = document.createElement('td');
+    const action = document.createElement('td');
+    if (existing) {
+      conflicts++;
+      status.className = 'status-exists';
+      status.textContent = existing.id === ws.id ? 'exists (same id)' : 'exists (same name)';
+      const sel = document.createElement('select');
+      sel.className = 'import-action';
+      for (const [value, label] of [['skip', 'Skip'], ['replace', 'Replace existing'], ['variant', 'Import as variant']]) {
+        const o = document.createElement('option');
+        o.value = value;
+        o.textContent = label;
+        sel.appendChild(o);
+      }
+      action.appendChild(sel);
+    } else {
+      status.className = 'status-new';
+      status.textContent = 'new';
+      action.textContent = 'Add';
+      tr.dataset.action = 'add';
+    }
+    tr.append(name, count, status, action);
+    tbody.appendChild(tr);
+  });
+  $('#import-conflicts-hint').hidden = conflicts === 0;
+  openDialog('#import-dialog');
+}
+
+function applyImport() {
+  const rows = Array.from($('#import-list').querySelectorAll('tr'));
+  const summary = { added: 0, replaced: 0, variants: 0, skipped: 0 };
+  let firstId = null;
+  for (const tr of rows) {
+    const ws = pendingImport[Number(tr.dataset.index)];
+    const action = tr.dataset.action || tr.querySelector('.import-action').value;
+    ws.rules.forEach((r) => { r.id = uid(); });
+    if (action === 'skip') { summary.skipped++; continue; }
+    if (action === 'replace') {
+      const existing = findExisting(ws);
+      // Keep id, position and demo flag; everything else comes from the file.
+      Object.assign(existing, {
+        name: ws.name, longestFirst: ws.longestFirst, persistTexts: ws.persistTexts,
+        rules: ws.rules, seed: ws.seed, mappings: ws.mappings, hidden: false,
+      });
+      if (ws.texts) existing.texts = ws.texts; else delete existing.texts;
+      ioBuffers.delete(existing.id);
+      firstId = firstId || existing.id;
+      summary.replaced++;
+      continue;
+    }
+    if (action === 'variant') {
+      ws.id = uid();
+      ws.name = uniqueName(ws.name);
+      summary.variants++;
+    } else {
+      if (state.workspaces.some((w) => w.id === ws.id)) ws.id = uid();
+      summary.added++;
+    }
+    state.workspaces.push(ws);
+    firstId = firstId || ws.id;
+  }
+  pendingImport = [];
+  $('#import-dialog').close();
+  if (firstId) state.activeWorkspaceId = firstId;
+  else if (!activeWorkspace()) state.activeWorkspaceId = visibleWorkspaces()[0]?.id || null;
+  saveState();
+  renderAll();
+  const parts = [];
+  if (summary.added) parts.push(`${summary.added} added`);
+  if (summary.replaced) parts.push(`${summary.replaced} replaced`);
+  if (summary.variants) parts.push(`${summary.variants} imported as variant`);
+  if (summary.skipped) parts.push(`${summary.skipped} skipped`);
+  toast('Import: ' + (parts.join(', ') || 'nothing to do') + '.');
 }
 
 function resetAll() {
@@ -1275,7 +1423,7 @@ function openDialog(sel) {
 $('#btn-help').addEventListener('click', () => openDialog('#help-dialog'));
 $('#btn-privacy').addEventListener('click', () => openDialog('#privacy-dialog'));
 for (const dlg of document.querySelectorAll('dialog.help')) {
-  dlg.querySelector('.dialog-close').addEventListener('click', () => dlg.close());
+  for (const b of dlg.querySelectorAll('.dialog-close')) b.addEventListener('click', () => dlg.close());
   // A click on the backdrop (outside the dialog box) closes it, like Esc does.
   dlg.addEventListener('click', (e) => { if (e.target === e.currentTarget) dlg.close(); });
 }
@@ -1327,7 +1475,13 @@ $('#btn-run').addEventListener('click', () => { run(); commitMappings(); });
 $('#btn-copy').addEventListener('click', () => { commitMappings(); copyText($('#io-out').value); });
 $('#btn-clear').addEventListener('click', clearIo);
 
-$('#btn-export').addEventListener('click', exportJson);
+$('#btn-export').addEventListener('click', openExportDialog);
+$('#export-confirm').addEventListener('click', exportJson);
+$('#export-all').addEventListener('change', (e) => { for (const b of exportChecked()) b.checked = e.target.checked; updateExportAll(); });
+$('#import-confirm').addEventListener('click', applyImport);
+for (const b of document.querySelectorAll('.import-set-all')) {
+  b.addEventListener('click', () => { for (const s of $('#import-list').querySelectorAll('.import-action')) s.value = b.dataset.action; });
+}
 $('#btn-import').addEventListener('click', () => $('#file-import').click());
 $('#file-import').addEventListener('change', (e) => {
   const file = e.target.files?.[0];

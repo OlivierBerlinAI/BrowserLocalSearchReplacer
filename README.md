@@ -96,7 +96,8 @@ nginx pass upstream headers through by default; do not override them with
 
 ## Usage
 
-1. **Workspaces** (left bar): create, select, rename (click the title), delete.
+1. **Workspaces** (left bar): create, select, rename (click the title at the
+   top, the pencil icon marks it), delete.
    Three **demo workspaces** (Basics, Wildcards with JSON, Log file) are added
    automatically and marked with a *demo* badge; a blue note above the
    keywords explains what each one shows. They can be edited like any other
@@ -197,8 +198,13 @@ nginx pass upstream headers through by default; do not override them with
    transparent and sits over a backdrop that renders the same text with
    `<mark>` elements.)
 5. **Export / Import JSON**: back up or move workspaces between browsers
-   (including seed and wildcard mappings). Import always *adds* workspaces;
-   it never overwrites existing ones. Files and the stored state carry a
+   (including seed and wildcard mappings). *Export* opens a dialog to pick
+   one, several or all workspaces (the active one is preselected). *Import*
+   lists the workspaces in the file; a workspace that already exists (same
+   id or same name) gets a per-row choice: *Skip* (default), *Replace
+   existing* (keeps id and position, takes everything else from the file) or
+   *Import as variant* (adds a copy named "Name (2)"). New ones are simply
+   added. Files and the stored state carry a
    schema `version` (currently 2); older formats are migrated on load and on
    import by `public/migrations.js`, data from a newer app version loads with
    a warning.

@@ -17,6 +17,7 @@
     <symbol id="mdi-regex" viewBox="0 0 24 24"><path d="M16,16.92C15.67,16.97 15.34,17 15,17C14.66,17 14.33,16.97 14,16.92V13.41L11.5,15.89C11,15.5 10.5,15 10.11,14.5L12.59,12H9.08C9.03,11.67 9,11.34 9,11C9,10.66 9.03,10.33 9.08,10H12.59L10.11,7.5C10.3,7.25 10.5,7 10.76,6.76V6.76C11,6.5 11.25,6.3 11.5,6.11L14,8.59V5.08C14.33,5.03 14.66,5 15,5C15.34,5 15.67,5.03 16,5.08V8.59L18.5,6.11C19,6.5 19.5,7 19.89,7.5L17.41,10H20.92C20.97,10.33 21,10.66 21,11C21,11.34 20.97,11.67 20.92,12H17.41L19.89,14.5C19.7,14.75 19.5,15 19.24,15.24V15.24C19,15.5 18.75,15.7 18.5,15.89L16,13.41V16.92H16V16.92M5,19A2,2 0 0,1 7,17A2,2 0 0,1 9,19A2,2 0 0,1 7,21A2,2 0 0,1 5,19H5Z"/></symbol>
     <symbol id="mdi-seed" viewBox="0 0 24 24"><path d="M20.7,3.3C20.7,3.3 19.3,3 17.2,3C11.7,3 1.6,5.1 3.2,20.8C4.3,20.9 5.4,21 6.4,21C24.3,21 20.7,3.3 20.7,3.3M7,17C7,17 7,7 17,7C17,7 11,9 7,17Z"/></symbol>
     <symbol id="mdi-help-circle-outline" viewBox="0 0 24 24"><path d="M11,18H13V16H11V18M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z"/></symbol>
+    <symbol id="mdi-pencil-outline" viewBox="0 0 24 24"><path d="M14.06,9L15,9.94L5.92,19H5V18.08L14.06,9M17.66,3C17.41,3 17.15,3.1 16.96,3.29L15.13,5.12L18.88,8.87L20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18.17,3.09 17.92,3 17.66,3M14.06,6.19L3,17.25V21H6.75L17.81,9.94L14.06,6.19Z"/></symbol>
     <symbol id="mdi-close" viewBox="0 0 24 24"><path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/></symbol>
   </svg>
   <aside class="sidebar">
@@ -43,7 +44,7 @@
 
     <section id="workspace-view" class="workspace-view" hidden>
       <header class="ws-header">
-        <input id="ws-name" class="ws-name" type="text" placeholder="Workspace name" spellcheck="false">
+        <label class="ws-name-wrap" title="Click to rename the workspace"><svg class="icon ws-name-pencil"><use href="#mdi-pencil-outline"/></svg><input id="ws-name" class="ws-name" type="text" placeholder="Workspace name" spellcheck="false" title="Click to rename the workspace"></label>
         <label class="checkbox"><input id="ws-longest-first" type="checkbox"> Longest keyword first</label>
         <label class="checkbox" title="Also store the Original/Anonymized texts of this workspace in localStorage so they survive a page reload"><input id="ws-persist-texts" type="checkbox"> Keep texts across reload</label>
         <button id="btn-delete-workspace" class="btn btn-danger">Delete workspace</button>
@@ -260,6 +261,40 @@
         <li><em>Reset all</em> removes everything this app stored in this browser.</li>
       </ul>
       <p class="hint">Legal: <a href="https://olivier.berlin/imprint/" target="_blank" rel="noopener">Imprint</a> · <a href="https://olivier.berlin/privacy-policy/" target="_blank" rel="noopener">Privacy Policy</a></p>
+    </div>
+  </dialog>
+
+  <dialog id="export-dialog" class="help help-compact">
+    <div class="help-head">
+      <h2>Export workspaces</h2>
+      <button class="btn btn-icon dialog-close" title="Close (Esc)"><svg class="icon"><use href="#mdi-close"/></svg></button>
+    </div>
+    <div class="help-body">
+      <label class="checkbox pick-all"><input id="export-all" type="checkbox"> Select all</label>
+      <ul id="export-list" class="pick-list"></ul>
+      <p class="hint">The file contains the selected workspaces with keywords, options, seed, wildcard mappings and (if kept) texts.</p>
+      <div class="dialog-actions">
+        <button id="export-confirm" class="btn btn-primary">Export selected</button>
+        <button class="btn dialog-close">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="import-dialog" class="help help-compact">
+    <div class="help-head">
+      <h2>Import workspaces</h2>
+      <button class="btn btn-icon dialog-close" title="Close (Esc)"><svg class="icon"><use href="#mdi-close"/></svg></button>
+    </div>
+    <div class="help-body">
+      <p id="import-conflicts-hint" class="hint" hidden>Some workspaces already exist (same id or name). Choose per row: <em>Replace</em> overwrites the existing workspace, <em>Skip</em> leaves it untouched, <em>Import as variant</em> adds a copy with a new name. Set all: <button class="link-btn import-set-all" data-action="replace">Replace</button> · <button class="link-btn import-set-all" data-action="skip">Skip</button> · <button class="link-btn import-set-all" data-action="variant">Variant</button></p>
+      <table class="help-table import-table">
+        <thead><tr><th>Workspace</th><th>Keywords</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody id="import-list"></tbody>
+      </table>
+      <div class="dialog-actions">
+        <button id="import-confirm" class="btn btn-primary">Import</button>
+        <button class="btn dialog-close">Cancel</button>
+      </div>
     </div>
   </dialog>
 

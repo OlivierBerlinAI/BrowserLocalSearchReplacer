@@ -279,24 +279,83 @@ test('help and how-it\'s-done dialogs open and close', async (page) => {
   }
 });
 
-test('export contains seed and mappings; import strips the demo flag', async (page) => {
+test('export dialog: select all / subset; file has seed and mappings', async (page) => {
   await page.click('#workspace-list li:nth-child(2)');
   await wait(page, 1800);
-  const exported = await page.evaluate(() => JSON.stringify({ version: 1, workspaces: visibleWorkspaces() }));
-  const parsed = JSON.parse(exported);
-  const demo2 = parsed.workspaces.find((w) => w.id === 'demo-2-wildcards');
+  await page.click('#btn-export');
+  assert.ok(await page.evaluate(() => document.getElementById('export-dialog').open));
+  const boxes = page.locator('#export-list input[type="checkbox"]');
+  assert.strictEqual(await boxes.count(), 3);
+  assert.deepStrictEqual(await boxes.evaluateAll((bs) => bs.map((b) => b.checked)), [false, true, false], 'active workspace preselected');
+  assert.strictEqual(await page.textContent('#export-confirm'), 'Export 1 workspace');
+  await page.check('#export-all');
+  assert.deepStrictEqual(await boxes.evaluateAll((bs) => bs.map((b) => b.checked)), [true, true, true]);
+  await boxes.nth(0).uncheck();
+  assert.ok(await page.evaluate(() => document.getElementById('export-all').indeterminate));
+  assert.strictEqual(await page.textContent('#export-confirm'), 'Export 2 workspaces');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#export-confirm')]);
+  const content = JSON.parse(require('fs').readFileSync(await download.path(), 'utf8'));
+  assert.strictEqual(content.version, 2);
+  assert.deepStrictEqual(content.workspaces.map((w) => w.id), ['demo-2-wildcards', 'demo-3-logfile']);
+  const demo2 = content.workspaces[0];
   assert.strictEqual(demo2.seed, 'demo2-wildcards-seed');
   assert.ok(demo2.mappings.length > 0);
-  await page.evaluate((json) => {
-    const file = new File([json], 'ws.json', { type: 'application/json' });
-    importJson(file);
-  }, exported);
+  assert.ok(!(await page.evaluate(() => document.getElementById('export-dialog').open)), 'dialog closes after export');
+});
+
+test('import dialog: add, replace, skip and import as variant', async (page) => {
+  const file = {
+    version: 2,
+    workspaces: [
+      { id: 'fresh', name: 'Fresh', rules: [{ keyword: 'a', replacement: 'b' }] },
+      { id: 'demo-1-basics', name: 'Demo 1 – Basics', rules: [{ keyword: 'replaced', replacement: 'R' }], seed: 'new-seed' },
+      { id: 'other-id', name: 'Demo 2 – Wildcards (JSON)', rules: [] },
+      { id: 'demo-3-logfile', name: 'Demo 3 – Log file', rules: [] },
+    ],
+  };
+  const open = async () => {
+    await page.evaluate((json) => importJson(new File([json], 'ws.json', { type: 'application/json' })), JSON.stringify(file));
+    await wait(page, 300);
+    assert.ok(await page.evaluate(() => document.getElementById('import-dialog').open));
+  };
+  await open();
+  const rows = page.locator('#import-list tr');
+  assert.deepStrictEqual(await rows.evaluateAll((trs) => trs.map((t) => t.children[2].textContent)), ['new', 'exists (same id)', 'exists (same name)', 'exists (same id)']);
+  assert.ok(await page.isVisible('#import-conflicts-hint'));
+  await rows.nth(1).locator('select').selectOption('replace');
+  await rows.nth(2).locator('select').selectOption('variant');
+  // row 3 stays on the default: skip
+  await page.click('#import-confirm');
   await wait(page, 300);
+  assert.ok((await page.textContent('#toast')).includes('1 added, 1 replaced, 1 imported as variant, 1 skipped'));
   const names = await page.locator('#workspace-list li').evaluateAll((ls) => ls.map((l) => l.querySelector('.ws-list-name').textContent + (l.querySelector('.demo-badge') ? ' [demo]' : '')));
-  assert.strictEqual(names.length, 6);
-  assert.strictEqual(names.filter((n) => !n.includes('[demo]')).length, 3, 'imported copies are ordinary workspaces');
+  assert.deepStrictEqual(names, ['Demo 1 – Basics [demo]', 'Demo 2 – Wildcards (JSON) [demo]', 'Demo 3 – Log file [demo]', 'Fresh', 'Demo 2 – Wildcards (JSON) (2)']);
+  const demo1 = await page.evaluate(() => state.workspaces.find((w) => w.id === 'demo-1-basics'));
+  assert.strictEqual(demo1.rules[0].keyword, 'replaced', 'replace keeps the id, takes the content');
+  assert.strictEqual(demo1.seed, 'new-seed');
+  assert.strictEqual(demo1.demo, true, 'replace keeps the demo flag');
+  const demo3 = await page.evaluate(() => state.workspaces.find((w) => w.id === 'demo-3-logfile'));
+  assert.strictEqual(demo3.rules.length, 8, 'skipped workspace untouched');
   const ids = await page.evaluate(() => state.workspaces.map((w) => w.id));
   assert.strictEqual(new Set(ids).size, ids.length, 'ids stay unique');
+  // "Set all: Skip" then Cancel changes nothing.
+  await open();
+  await page.click('.import-set-all[data-action="skip"]');
+  assert.deepStrictEqual(await page.locator('#import-list select').evaluateAll((ss) => ss.map((x) => x.value)), ['skip', 'skip', 'skip', 'skip']);
+  await page.locator('#import-dialog .dialog-actions .dialog-close').click();
+  assert.strictEqual(await page.evaluate(() => state.workspaces.length), 5);
+});
+
+test('workspace can be renamed via the title field', async (page) => {
+  await page.click('#btn-add-workspace');
+  assert.strictEqual(await page.getAttribute('#ws-name', 'title'), 'Click to rename the workspace');
+  await page.fill('#ws-name', 'My renamed workspace');
+  await page.press('#ws-name', 'Enter');
+  const names = await page.locator('#workspace-list li .ws-list-name').allTextContents();
+  assert.ok(names.includes('My renamed workspace'));
+  await page.reload();
+  await wait(page, 200);
+  assert.strictEqual(await page.inputValue('#ws-name'), 'My renamed workspace');
 });
 
 run();
