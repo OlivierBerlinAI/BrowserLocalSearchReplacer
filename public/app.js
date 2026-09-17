@@ -3,6 +3,10 @@
 
 // ---------- Persistence (localStorage only) ----------
 const STORAGE_KEY = 'blsr.state.v1';
+// Set once the "can be restored from the sidebar" hint has been shown when
+// hiding a demo workspace. Deliberately not part of the state: restoring the
+// demos (or re-hiding them) must not bring the hint back.
+const DEMO_HINT_KEY = 'blsr.demoRestoreHintShown.v1';
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -748,7 +752,14 @@ function deleteWorkspace() {
   const ws = activeWorkspace();
   if (!ws) return;
   if (ws.demo) {
-    if (!confirm(`Hide demo workspace "${ws.name}"? It is only hidden in this browser and can be restored from the sidebar.`)) return;
+    let hintShown = false;
+    try { hintShown = localStorage.getItem(DEMO_HINT_KEY) === '1'; } catch {}
+    const question = hintShown
+      ? `Hide demo workspace "${ws.name}"?`
+      : `Hide demo workspace "${ws.name}"? It is only hidden in this browser and can be restored from the sidebar.`;
+    const ok = confirm(question);
+    if (!hintShown) { try { localStorage.setItem(DEMO_HINT_KEY, '1'); } catch {} }
+    if (!ok) return;
     stashIo();
     flushPersist();
     commitMappings();
@@ -1481,6 +1492,8 @@ function resetAll() {
   pendingWsId = null;
   lastHits = new Map();
   localStorage.removeItem(STORAGE_KEY);
+  // "Reset all removes everything this app stored" includes the hint flag.
+  try { localStorage.removeItem(DEMO_HINT_KEY); } catch {}
   renderAll();
   toast('All data cleared. Demo workspaces restored.');
 }

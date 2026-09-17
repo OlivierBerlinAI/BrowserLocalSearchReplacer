@@ -20,6 +20,7 @@ test('loads with three demo workspaces and no external requests', async (page, u
   assert.deepStrictEqual(colors, ['rgb(147, 197, 253)/underline', 'rgb(147, 197, 253)/underline', 'rgb(147, 197, 253)/underline'], 'all footer links share one style');
   const legal = await page.locator('.sidebar-footer .legal-links a').evaluateAll((as) => as.map((a) => a.textContent + '=' + a.href + '|' + a.target + '|' + a.rel));
   assert.deepStrictEqual(legal, [
+    'Source Code=https://github.com/OlivierBerlinAI/BrowserLocalSearchReplacer|_blank|noopener',
     'Imprint=https://olivier.berlin/imprint/|_blank|noopener',
     'Privacy Policy=https://olivier.berlin/privacy-policy/|_blank|noopener',
   ]);
@@ -56,8 +57,12 @@ test('security headers and CSP block every outgoing channel', async (page, url) 
 });
 
 test('hiding and restoring demo workspaces', async (page) => {
+  const confirms = [];
+  page.on('dialog', (d) => confirms.push(d.message())); // harness listener accepts
   await page.click('#btn-delete-workspace');
   await wait(page, 200);
+  assert.ok(confirms[0].includes('can be restored'), 'first hide shows the restore hint');
+  assert.strictEqual(await page.evaluate(() => localStorage.getItem('blsr.demoRestoreHintShown.v1')), '1');
   let names = await page.locator('#workspace-list li .ws-list-name').allTextContents();
   assert.deepStrictEqual(names, ['Demo 2 – Wildcards (JSON)', 'Demo 3 – Log file']);
   assert.ok(await page.isVisible('#btn-restore-demos'));
@@ -75,6 +80,15 @@ test('hiding and restoring demo workspaces', async (page) => {
   names = await page.locator('#workspace-list li .ws-list-name').allTextContents();
   assert.strictEqual(names.length, 4);
   assert.ok(await page.isHidden('#btn-restore-demos'));
+  // Restoring keeps the flag, so a second hide asks without the restore hint.
+  assert.strictEqual(await page.evaluate(() => localStorage.getItem('blsr.demoRestoreHintShown.v1')), '1', 'flag survives restore');
+  await page.click('#workspace-list li:nth-child(1)'); // Demo 1
+  await wait(page, 100);
+  confirms.length = 0;
+  await page.click('#btn-delete-workspace');
+  await wait(page, 200);
+  assert.strictEqual(confirms.length, 1);
+  assert.ok(!confirms[0].includes('can be restored'), 'second hide omits the restore hint');
 });
 
 test('reset all brings the demo workspaces back', async (page) => {
@@ -87,6 +101,7 @@ test('reset all brings the demo workspaces back', async (page) => {
   assert.deepStrictEqual(names, ['Demo 1 – Basics', 'Demo 2 – Wildcards (JSON)', 'Demo 3 – Log file']);
   assert.strictEqual(await page.inputValue('#ws-name'), 'Demo 1 – Basics');
   assert.ok((await page.inputValue('#io-out')).startsWith('Hi PERSON_1_FIRSTNAME,'), 'demo text and result are shown again');
+  assert.strictEqual(await page.evaluate(() => localStorage.getItem('blsr.demoRestoreHintShown.v1')), null, 'reset all also clears the hint flag');
   await page.reload();
   await wait(page, 200);
   assert.strictEqual((await page.locator('#workspace-list li').count()), 3);
